@@ -272,9 +272,9 @@ Mỗi symbol chỉ có tối đa 1 setup mở. Sau khi setup đóng, symbol đó
   - Chưa đọc được số dư (bằng 0, ví dụ lúc terminal mới kết nối): không tạo setup.
 
 ### 6.8 Kiểm chéo tick value
-- Rủi ro luôn tính bằng `SYMBOL_TRADE_TICK_VALUE_LOSS` / `TICK_SIZE` của broker. Terminal đã quy đổi giá trị này về tiền tệ tài khoản, nên dùng đúng cho mọi loại tài sản và cả tài khoản không phải USD.
+- Rủi ro tính bằng `SYMBOL_TRADE_TICK_VALUE_LOSS` / `TICK_SIZE` của broker (trừ trường hợp lệch bên dưới). Terminal đã quy đổi giá trị này về tiền tệ tài khoản, nên dùng đúng cho mọi loại tài sản và cả tài khoản không phải USD.
 - Mỗi lần phân tích, EA tự tính lại giá trị kỳ vọng = tick size × contract size × tỷ giá (tiền tệ lợi nhuận → tiền tệ tài khoản). Tỷ giá lấy từ cặp tiền trực tiếp hoặc nghịch đảo, ví dụ USDJPY cho JP225.
-  - Lệch > `InpTickValueTolPct` (5%): log cảnh báo một lần, vẫn dùng số của broker.
+  - Lệch > `InpTickValueTolPct` (5%): log cảnh báo một lần và dùng **số lớn hơn** trong hai số (broker hoặc tính tay), để rủi ro không bao giờ bị ước thấp. Ví dụ broker báo XAUUSD 0.1 USD/tick trong khi contract 100 × tick 0.01 = 1: EA dùng 1.
   - Lệch > 10 lần: coi là dữ liệu hỏng, loại symbol (trạng thái "spec bất thường").
   - Kiểu tính futures hoặc không tìm được tỷ giá: bỏ qua kiểm chéo.
   - Để lấy tỷ giá, EA có thể thêm cặp quy đổi (ví dụ USDJPY) vào Market Watch.
