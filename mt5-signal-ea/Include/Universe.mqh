@@ -9,6 +9,7 @@
 
 // Khai báo trước (định nghĩa trong Signals.mqh): symbol có setup đang mở thì không gỡ khỏi Market Watch
 bool SigHasOpen(const string sym);
+bool JnlHasOpen(const string sym);   // định nghĩa trong Journal.mqh
 
 //--- Mã trạng thái xử lý (chỉ log khi đổi trạng thái để tránh spam log)
 #define SST_NEW             0
@@ -494,7 +495,7 @@ bool UniBuild()
      }
    int nOld=ArraySize(g_uni);
    for(int i=0;i<nOld;i++)
-      if(g_uni[i].selectedByEA && UniFindIn(nu,g_uni[i].name)<0 && !SigHasOpen(g_uni[i].name))
+      if(g_uni[i].selectedByEA && UniFindIn(nu,g_uni[i].name)<0 && !SigHasOpen(g_uni[i].name) && !JnlHasOpen(g_uni[i].name))
          SymbolSelect(g_uni[i].name,false);
 
    ArrayResize(g_uni,nNew);

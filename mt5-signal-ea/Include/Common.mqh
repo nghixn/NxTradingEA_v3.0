@@ -6,7 +6,7 @@
 #define SIGNALEA_COMMON_MQH
 
 #define EA_NAME       "SignalEA"
-#define EA_VERSION    "0.9.1"
+#define EA_VERSION    "0.9.2"
 #define EA_STAGE      "Giai đoạn 5 - chờ biên dịch"
 #define EA_FILES_DIR  "SignalEA"
 
