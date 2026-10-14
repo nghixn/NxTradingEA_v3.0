@@ -36,7 +36,7 @@ bool     g_tgWarnedConfig=false;
 int TgSplitMessage(const string text,const int maxLen,string &parts[])
   {
    ArrayResize(parts,0);
-   int limit=MathMax(200,maxLen);
+   int limit=IntMax(200,maxLen);
    string lines[];
    int n=StringSplit(text,'\n',lines);
    string cur="";

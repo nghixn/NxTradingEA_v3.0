@@ -3,7 +3,7 @@
 > **EA chỉ báo tín hiệu. Tuyệt đối không đặt, sửa hay đóng lệnh.** Mã nguồn không gọi `OrderSend`, `CTrade` hay bất kỳ hàm giao dịch nào, và không dùng DLL.
 > Tín hiệu chỉ để tham khảo, không phải lời khuyên đầu tư.
 
-Phiên bản hiện tại: **0.5.0**: đã giao Giai đoạn 1–4. Lần này là **Giai đoạn 3**: kiểm chéo tick value, log diễn giải cách tính lot cho từng setup, chặn báo setup khi chưa đọc được số dư.
+Phiên bản hiện tại: **0.9.0**, ứng viên phát hành. Đã đủ các giai đoạn 1–5. **Mã chưa được biên dịch bằng MetaEditor**: sẽ lên 1.0.0 sau khi biên dịch sạch và đạt các mục nghiệm thu ở mục 9.
 
 ---
 
@@ -17,7 +17,7 @@ Phiên bản hiện tại: **0.5.0**: đã giao Giai đoạn 1–4. Lần này l
 | 2 | Chấm điểm bias đa khung, tìm vùng Entry (confluence), setup chờ hồi/phá vỡ, SL/TP/RR, hủy kèo, hai tầng ngưỡng, nhóm tương quan, phơi nhiễm tiền tệ, xếp hạng top K, giới hạn tin/ngày, cảnh báo tin tức | Đã giao |
 | 3 | Quản lý vốn: lot theo SL thật, `CẢNH BÁO RỦI RO`, tổng rủi ro, "đang chờ, vượt ngưỡng rủi ro" | **Đã giao** (phần tính toán làm sớm ở GĐ2; GĐ3 thêm kiểm chéo tick value và log diễn giải) |
 | 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | Đã giao |
-| 5 | Hoàn thiện README/TESTING, đối chiếu nghiệm thu | Một phần (tài liệu đã cập nhật theo từng giai đoạn) |
+| 5 | Rà soát toàn bộ mã nguồn, hoàn thiện README/TESTING, bảng đối chiếu nghiệm thu (mục 9) | **Đã giao** |
 
 ### Module
 
@@ -329,3 +329,26 @@ EA sẽ ghi một file JSON cho mỗi sự kiện vào `MQL5/Files/SignalEA/ai_q
 | `Telegram từ chối (HTTP 403...)` | Bạn đã chặn bot hoặc bot bị kick khỏi group |
 | `[RISK] ... tick value broker lệch x%` | Gửi tôi dòng log đó kèm thông số hợp đồng trên Exness để kiểm tra |
 | Muốn xóa toàn bộ setup đã lưu | Gỡ EA, xóa `MQL5/Files/SignalEA/state_<số TK>.txt`, rồi gắn lại EA |
+
+---
+
+## 9. Đối chiếu nghiệm thu
+
+| # | Tiêu chí | Cách đáp ứng trong mã | Cách kiểm (TESTING.md) | Trạng thái |
+|---|---|---|---|---|
+| 1 | Biên dịch không lỗi, không cảnh báo nghiêm trọng | Đã rà soát tĩnh: ngoặc cân bằng, không gọi hàm trước khi khai báo, ép kiểu rõ ràng (`IntMax/IntMin/IntAbs`), file UTF-8 có BOM | T1.1, T2.1 | **Chờ bạn biên dịch** |
+| 2 | DryRun in đúng nội dung tin cho BTCUSD, XAUUSD | `InpDryRun=true` → mọi tin in ra log với tiền tố `[DRYRUN]`; mỗi giờ có `[SNAPSHOT]` cho ưu tiên/phụ; mẫu tin ở mục 6.7 | T1.2, T2.3 | Chờ chạy thử |
+| 3 | Gửi được tin thử; khởi động lại không báo trùng | Tin "EA ĐÃ CHẠY" là tin thử; `State.mqh` lưu setup đang mở và cooldown, nạp lại khi khởi động | T4.1, T4.4 | Chờ chạy thử |
+| 4 | Chỉ báo khớp CSV của `ExportChartData.mq5` | Self-test ghi `MQL5/Files/SignalEA/selftest_values.csv` (giá trị nến đã đóng) để so sánh | T1.6 | Chờ chạy thử |
+| 5 | Lot/rủi ro đúng theo tick value Exness | Lot tính từ `TICK_VALUE_LOSS/TICK_SIZE`, làm tròn xuống theo step; kiểm chéo tick value; log `[RISK]` diễn giải từng bước | T1.7, T3.1–T3.3 | Chờ chạy thử |
+| 6 | Không có hàm giao dịch | Không có `OrderSend`, `CTrade`, `Position*`, `OrderCalc*`, `#import`/DLL (đã tìm trong toàn bộ mã) | T1.1 | **Đạt** (kiểm tĩnh) |
+| 7 | Quét ổn định hàng trăm symbol; RAM/CPU không tăng dần; một chu kỳ không quá vài giây | N symbol/chu kỳ + ngân sách ms; chỉ báo tự tính (không giữ handle); gỡ symbol khám phá khỏi Market Watch sau khi quét; mọi mảng đều có giới hạn (setup đóng được dọn, hàng đợi Telegram ≤ 100, ứng viên xóa mỗi vòng) | T1.4, T1.8, T2.10 | Chờ chạy 24h |
+| 8 | Log nhận/loại kèm lý do; DryRun cả ngày không gây bão tin | Log + `universe.csv`; top K/vòng, giới hạn tin/ngày, 1 setup/symbol, cooldown | T1.3, T2.5, T4.6 | Chờ chạy 24h |
+| 9 | Chỉ báo tự tính khớp `iMA/iBands/iRSI/iATR` trên ≥ 5 symbol, 3 nhóm | Self-test 5 symbol mặc định (Crypto, Kim loại, Forex, Chỉ số) × H1/H4/D1 | T1.6 | Chờ chạy thử |
+
+Những điểm cần lưu ý (giới hạn đã biết):
+- **Chưa biên dịch**: môi trường phát triển không có MetaEditor. Lỗi cú pháp nếu có thường nhỏ (kiểu dữ liệu, tên hằng) và sửa nhanh khi có `SignalEA.log`.
+- **Phân loại nhóm** dựa trên `SYMBOL_PATH` của Exness. Cần kiểm tra cột nhóm trong `universe.csv` ở lần chạy đầu.
+- **RSI tự tính** dùng khoảng 320 nến, nên có thể lệch iRSI ở chữ số thập phân thứ 3–4 (dung sai self-test 0.05).
+- **Hàng đợi Telegram** không được lưu qua lần khởi động lại; tin chưa gửi được in ra log.
+- **Tin tức** phụ thuộc lịch kinh tế của MT5; không có dữ liệu thì bỏ qua, không báo lỗi.

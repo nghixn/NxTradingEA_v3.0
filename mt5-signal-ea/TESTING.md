@@ -183,5 +183,23 @@ Input: `InpSelfTest=true`, `InpSelfTestSymbols="BTCUSD,XAUUSD,EURUSD,USDJPY,US30
 - ☐ Ngay sau khi terminal khởi động (số dư chưa có): không có setup nào, log `setup bị loại: chưa đọc được số dư tài khoản` (nếu có ứng viên).
 - ☐ (Nếu có tài khoản demo không phải USD) số tiền hiển thị theo tiền tệ tài khoản, ví dụ `21.00 EUR`, và kiểm chéo vẫn `KHỚP`.
 
-## Giai đoạn 5 (sẽ chi tiết hóa khi giao)
-- Rà soát toàn bộ nghiệm thu.
+## Giai đoạn 5: quy trình nghiệm thu đầy đủ
+
+Làm lần lượt; bước nào lỗi thì gửi log cho tôi trước khi làm tiếp. Bảng đối chiếu 9 tiêu chí nằm ở README mục 9.
+
+| Bước | Việc | Input chính | Mục kiểm | Tiêu chí |
+|---|---|---|---|---|
+| 1 | Biên dịch, gửi `SignalEA.log` nếu có lỗi hoặc cảnh báo | | T1.1 | 1, 6 |
+| 2 | Gắn lên 1 chart, xem log khởi động, universe, `universe.csv` | `InpDryRun=true` | T1.2, T1.3 | 8 |
+| 3 | Self-test chỉ báo và rủi ro | `InpSelfTest=true` | T1.6, T1.7, T3.1 | 4, 5, 9 |
+| 4 | Chạy 2–3 giờ, xem `[SNAPSHOT]`, `[DRYRUN]`, `[RISK]` của BTCUSD/XAUUSD | `InpLogLevel=DEBUG` | T1.4, T2.2–T2.4, T3.2 | 2, 5 |
+| 5 | Thử các quy tắc bằng cách tạm hạ ngưỡng (top K, giới hạn ngày, tương quan, tổng rủi ro) | xem từng mục | T2.5–T2.8 | 8 |
+| 6 | Bật Telegram thật, thử lỗi cấu hình | `InpDryRun=false` | T4.1–T4.3 | 3 |
+| 7 | Khởi động lại EA khi đang có setup mở | | T4.4 | 3 |
+| 8 | Chạy 24h, theo dõi RAM/CPU, đếm tin | `ALL_BROKER_SYMBOLS` | T1.8, T2.10, T4.6 | 7, 8 |
+
+Thông tin nên gửi lại cho tôi:
+1. `SignalEA.log` (biên dịch).
+2. Đoạn log từ lúc khởi động đến hết vòng quét đầu tiên.
+3. Các dòng `[SELFTEST]` và `[RISK]`.
+4. `MQL5/Files/SignalEA/universe.csv` (hoặc vài dòng có nhóm bị phân loại sai).

@@ -4,7 +4,7 @@
 //| Không dùng DLL. Không có hàm giao dịch nào trong mã nguồn.       |
 //+------------------------------------------------------------------+
 #property copyright   "NxTrading"
-#property version     "0.50"
+#property version     "0.90"
 #property description "Quét nhiều symbol, phân tích đa khung, gửi tín hiệu Telegram. Không giao dịch."
 
 #include "Include\Common.mqh"
@@ -407,8 +407,8 @@ bool ProcessSymbol(const int idx,const datetime hk)
 
    //--- 8. chỉ báo
    TfSnapshot snap[TFI_COUNT];
-   IndComputeSnapshot(mn1,MathMax(nMN,0),PERIOD_MN1,g_ind,snap[TFI_MN1]);
-   IndComputeSnapshot(w1,MathMax(nW1,0),PERIOD_W1,g_ind,snap[TFI_W1]);
+   IndComputeSnapshot(mn1,IntMax(nMN,0),PERIOD_MN1,g_ind,snap[TFI_MN1]);
+   IndComputeSnapshot(w1,IntMax(nW1,0),PERIOD_W1,g_ind,snap[TFI_W1]);
    IndComputeSnapshot(d1,nD1,PERIOD_D1,g_ind,snap[TFI_D1]);
    IndComputeSnapshot(h4,nH4,PERIOD_H4,g_ind,snap[TFI_H4]);
    IndComputeSnapshot(h1,nH1,PERIOD_H1,g_ind,snap[TFI_H1]);
@@ -620,6 +620,9 @@ void UpdatePanel(const string note)
                       FmtVal(g_uni[i].rsiH1,1),FmtVal(g_uni[i].spreadAtrPct,1),FmtVal(g_uni[i].minLotRiskPct,2));
      }
    s+=SigPanelText();
+   // Comment() có giới hạn độ dài -> cắt bớt để không lỗi hiển thị
+   if(StringLen(s)>2000)
+      s=StringSubstr(s,0,1990)+"\n...";
    Comment(s);
   }
 
@@ -643,9 +646,9 @@ int OnInit()
    g_ind.slopeBars=InpSlopeBars;
 
    //--- số nến cần tải, tôn trọng TERMINAL_MAXBARS
-   int need=MathMax(MathMax(InpMinBarsD1,InpMinBarsH1),InpMinBarsH4)+2;
-   need=MathMax(need,InpSmaSlow+InpSlopeBars+3);
-   g_barsToLoad=MathMax(InpBarsToLoad,need);
+   int need=IntMax(IntMax(InpMinBarsD1,InpMinBarsH1),InpMinBarsH4)+2;
+   need=IntMax(need,InpSmaSlow+InpSlopeBars+3);
+   g_barsToLoad=IntMax(InpBarsToLoad,need);
    int maxBars=TerminalInfoInteger(TERMINAL_MAXBARS);
    if(maxBars>0 && g_barsToLoad>maxBars)
      {

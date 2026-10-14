@@ -6,8 +6,8 @@
 #define SIGNALEA_COMMON_MQH
 
 #define EA_NAME       "SignalEA"
-#define EA_VERSION    "0.5.0"
-#define EA_STAGE      "Giai đoạn 3"
+#define EA_VERSION    "0.9.0"
+#define EA_STAGE      "Giai đoạn 5 - chờ biên dịch"
 #define EA_FILES_DIR  "SignalEA"
 
 //--- Chế độ vũ trụ quét
@@ -236,6 +236,10 @@ int IntAbs(const int v)
   {
    return (v<0) ? -v : v;
   }
+
+// Bản int của MathMax/MathMin (tránh cảnh báo chuyển kiểu)
+int IntMax(const int a,const int b) { return (a>b) ? a : b; }
+int IntMin(const int a,const int b) { return (a<b) ? a : b; }
 
 //+------------------------------------------------------------------+
 //| Định dạng số                                                     |

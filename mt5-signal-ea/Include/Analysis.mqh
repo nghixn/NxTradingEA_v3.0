@@ -159,8 +159,8 @@ int AnaSwings(const MqlRates &r[],const int n,const int strength,const int lookb
    ArrayResize(out,0);
    if(strength<1 || n<2*strength+3)
       return 0;
-   int first=MathMax(strength+1,minShift);
-   int last=MathMin(lookback,n-strength-1);
+   int first=IntMax(strength+1,minShift);
+   int last=IntMin(lookback,n-strength-1);
    int cnt=0;
    for(int i=first;i<=last;i++)
      {

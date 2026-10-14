@@ -377,7 +377,7 @@ string SigSummaryRow(const Setup &s)
   {
    SymbolSpec sp;
    string lots=RiskGetSpec(s.sym,sp) ? FmtLots(sp,s.lots) : DoubleToString(s.lots,2);
-   string flag=(s.state==SS_PENDING_RISK) ? " [CHỜ-RỦI RO]" : (s.riskWarn ? " [CẢNH BÁO RR]" : "");
+   string flag=(s.state==SS_PENDING_RISK) ? " [CHỜ-RỦI RO]" : (s.riskWarn ? " [CẢNH BÁO RỦI RO]" : "");
    return StringFormat("%s [%s] %s %s | E %s-%s | SL %s | TP1 %s | %s lot | %s (%.1f%%)%s",
                        s.sym,TierName((ENUM_SYMBOL_TIER)s.tier),SideName(s.side),SetupTypeCode(s.type),
                        SigP(s,s.entryLow),SigP(s,s.entryHigh),SigP(s,s.sl),SigP(s,s.tp1),lots,
@@ -449,7 +449,7 @@ bool SigBuild(const SymbolRec &rec,const AnaResult &res,const SymbolSpec &sp,con
    double rrPart=MathMin(s.rr1,4.0)/4.0;
    double confPart=MathMin((double)s.confluence,4.0)/4.0;
    double spreadPart=MathMax(0.0,1.0-spreadPct/MathMax(InpMaxSpreadAtrPct,0.01));
-   s.quality=40.0*s.score/MathMax(s.maxScore,1)+30.0*rrPart+20.0*confPart+10.0*spreadPart;
+   s.quality=40.0*s.score/IntMax(s.maxScore,1)+30.0*rrPart+20.0*confPart+10.0*spreadPart;
 
    s.newsNote=NewsNoteFor(s.sym,now);
    return true;

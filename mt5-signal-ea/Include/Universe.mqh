@@ -7,6 +7,9 @@
 
 #include "Common.mqh"
 
+// Khai báo trước (định nghĩa trong Signals.mqh): symbol có setup đang mở thì không gỡ khỏi Market Watch
+bool SigHasOpen(const string sym);
+
 //--- Mã trạng thái xử lý (chỉ log khi đổi trạng thái để tránh spam log)
 #define SST_NEW             0
 #define SST_OK              1
@@ -338,7 +341,7 @@ void UniPrintLongList(const string header,const string list)
    int part=1;
    while(pos<len)
      {
-      int take=MathMin(chunk,len-pos);
+      int take=IntMin(chunk,len-pos);
       // cắt tại dấu phẩy gần nhất
       if(pos+take<len)
         {
@@ -491,7 +494,7 @@ bool UniBuild()
      }
    int nOld=ArraySize(g_uni);
    for(int i=0;i<nOld;i++)
-      if(g_uni[i].selectedByEA && UniFindIn(nu,g_uni[i].name)<0)
+      if(g_uni[i].selectedByEA && UniFindIn(nu,g_uni[i].name)<0 && !SigHasOpen(g_uni[i].name))
          SymbolSelect(g_uni[i].name,false);
 
    ArrayResize(g_uni,nNew);
