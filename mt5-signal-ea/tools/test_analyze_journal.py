@@ -65,6 +65,23 @@ class AnalyzeTest(unittest.TestCase):
         text = aj.report(aj.load_rows(self.write(lines), False), "A")
         self.assertIn("kỳ vọng ÂM", text)
 
+    def test_quality_section(self):
+        # thắng +1.9R (MAE 0.6), thua -1R: một kèo từng lãi 1.5R, một kèo chưa từng lãi
+        lines = [row(1, True, 1.9, 3.57, 2.7), row(2, True, -1, -1, -1), row(3, True, -1, -1, -1)]
+        lines[2] = lines[2].replace(";1.5;0.6;", ";0.1;1.0;")
+        text = aj.report(aj.load_rows(self.write(lines), False), "A")
+        self.assertIn("Tỷ lệ thắng cần để hòa vốn (với lãi/lỗ TB hiện tại): 34% | thực tế 33%", text)
+        self.assertIn("Kèo thua: 2 | từng lãi >= 1R rồi quay đầu 1 (50%)", text)
+        self.assertIn("chưa từng lãi 0.3R 1 (50%)", text)
+        self.assertIn("Kèo thắng: đi ngược (MAE) trung vị 0.60R", text)
+        self.assertIn("Tháng (độ ổn định)", text)
+
+    def test_pct_drawdown(self):
+        # risk_pct 2.1: +1.9R, -1R, -1R -> DD = 2 × 2.1 = 4.2%
+        rows = aj.load_rows(self.write([row(1, True, 1.9, 3.57, 2.7), row(2, True, -1, -1, -1),
+                                        row(3, True, -1, -1, -1)]), False)
+        self.assertAlmostEqual(aj.pct_drawdown(rows, "r_a"), 4.2)
+
     def test_cli_missing_file(self):
         self.assertEqual(aj.main(["khong_ton_tai.csv"]), 1)
 

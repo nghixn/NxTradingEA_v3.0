@@ -36,6 +36,8 @@ def load_rows(path: Path, include_pending: bool) -> list[dict]:
     if not include_pending:
         rows = [r for r in rows if r.get("pending_risk") != "1"]
     rows.sort(key=lambda r: r.get("close_time") or "")
+    for r in rows:
+        r["month"] = (r.get("close_time") or "?")[:7]
     return rows
 
 
@@ -107,6 +109,49 @@ def breakdown(rows: list[dict], key: str, col: str, top: int | None = None) -> l
     return lines
 
 
+def pct_drawdown(rows: list[dict], col: str) -> float | None:
+    """Drawdown lớn nhất theo % số dư: cộng đơn R × risk_pct lúc báo (không lãi kép)."""
+    equity = peak = max_dd = 0.0
+    seen = False
+    for r in rows:
+        v, rp = to_float(r.get(col, "")), to_float(r.get("risk_pct", ""))
+        if r.get("filled") != "1" or v is None or rp is None:
+            continue
+        seen = True
+        equity += v * rp
+        peak = max(peak, equity)
+        max_dd = max(max_dd, peak - equity)
+    return max_dd if seen else None
+
+
+def quality_lines(filled: list[dict], col: str) -> list[str]:
+    """Chất lượng tín hiệu: tỷ lệ thắng hòa vốn, MFE/MAE của kèo thua và kèo thắng."""
+    out: list[str] = []
+    vals = [v for v in (to_float(r.get(col, "")) for r in filled) if v is not None]
+    s = r_stats(vals)
+    if s["n"] and s["avg_win"] > 0 and s["avg_loss"] < 0:
+        be = -s["avg_loss"] / (s["avg_win"] - s["avg_loss"])
+        out.append(f"Tỷ lệ thắng cần để hòa vốn (với lãi/lỗ TB hiện tại): {be:.0%} | thực tế {s['win_rate']:.0%} "
+                   f"({'trên' if s['win_rate'] > be else 'dưới'} ngưỡng {abs(s['win_rate'] - be) * 100:.0f} điểm %)")
+    pairs = [(to_float(r.get(col, "")), to_float(r.get("mfe_r", "")), to_float(r.get("mae_r", ""))) for r in filled]
+    pairs = [p for p in pairs if None not in p]
+    if not pairs:
+        return out
+    reach1 = sum(1 for _, mfe, _ in pairs if mfe >= 1.0)
+    out.append(f"Kèo đã khớp đi thuận được >= 1R: {reach1}/{len(pairs)} ({reach1 / len(pairs):.0%})")
+    losers = [(mfe, mae) for v, mfe, mae in pairs if v < 0]
+    if losers:
+        gave_back = sum(1 for mfe, _ in losers if mfe >= 1.0)
+        never = sum(1 for mfe, _ in losers if mfe < 0.3)
+        out.append(f"Kèo thua: {len(losers)} | từng lãi >= 1R rồi quay đầu {gave_back} ({gave_back / len(losers):.0%}) "
+                   f"-> quản lý lệnh | chưa từng lãi 0.3R {never} ({never / len(losers):.0%}) -> chất lượng điểm vào/hướng")
+    winners = [mae for v, _, mae in pairs if v > 0]
+    if winners:
+        out.append(f"Kèo thắng: đi ngược (MAE) trung vị {statistics.median(winners):.2f}R, "
+                   f"lớn nhất {max(winners):.2f}R -> nếu thường < 0.5R, SL có thể đang quá rộng")
+    return out
+
+
 def report(rows: list[dict], scenario: str) -> str:
     col, label = SCENARIOS[scenario]
     out: list[str] = []
@@ -145,9 +190,17 @@ def report(rows: list[dict], scenario: str) -> str:
                    f"đi ngược lớn nhất (MAE) trung vị {statistics.median(mae):.2f}R")
 
     out.append("")
+    out.append(f"== Chất lượng tín hiệu (kịch bản {scenario}) ==")
+    out.extend(quality_lines(filled, col))
+    dd = pct_drawdown(rows, col)
+    if dd is not None:
+        out.append(f"Drawdown max theo % số dư (cộng đơn R × % rủi ro lúc báo): {dd:.1f}%")
+
+    out.append("")
     out.append(f"== Chi tiết theo kịch bản {scenario} ({label}) ==")
     for key, title, top in (("tier", "Tầng", None), ("group", "Nhóm tài sản", None), ("type", "Loại setup", None),
-                            ("side", "Hướng", None), ("score", "Điểm bias", None), ("symbol", "Symbol (top 10)", 10)):
+                            ("side", "Hướng", None), ("score", "Điểm bias", None), ("month", "Tháng (độ ổn định)", None),
+                            ("symbol", "Symbol (top 10)", 10)):
         out.append(f"{title}:")
         out.extend(breakdown(rows, key, col, top))
 

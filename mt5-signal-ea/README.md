@@ -400,7 +400,9 @@ Mỗi kèo đóng được ghi một dòng. File dùng UTF-8, phân cách `;`, m
   Script in ra:
   - tỷ lệ thắng, kỳ vọng trung bình theo R kèm khoảng tin cậy 95%;
   - profit factor, chuỗi thua dài nhất, drawdown lớn nhất (theo R);
-  - bảng tách theo tầng, nhóm tài sản, loại setup, hướng, điểm bias, symbol.
+  - chất lượng tín hiệu: tỷ lệ thắng cần để hòa vốn so với thực tế, kèo thua từng lãi ≥ 1R rồi quay đầu, kèo thua chưa từng lãi 0.3R, MAE của kèo thắng;
+  - drawdown theo % số dư (cộng đơn R × % rủi ro lúc báo);
+  - bảng tách theo tầng, nhóm tài sản, loại setup, hướng, điểm bias, tháng, symbol.
 
 ### Cách đọc kết quả
 - **Cần ít nhất 30 kèo khớp**, tốt hơn là 100, trước khi kết luận. Với ít kèo, khoảng tin cậy rất rộng và kết quả tốt có thể chỉ là may mắn.
