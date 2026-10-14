@@ -3,7 +3,7 @@
 > **EA chỉ báo tín hiệu. Tuyệt đối không đặt, sửa hay đóng lệnh.** Mã nguồn không gọi `OrderSend`, `CTrade` hay bất kỳ hàm giao dịch nào, và không dùng DLL.
 > Tín hiệu chỉ để tham khảo, không phải lời khuyên đầu tư.
 
-Phiên bản hiện tại: **0.9.2**, ứng viên phát hành. Đã đủ các giai đoạn 1–5, cộng thêm cầu nối Python gọi Claude API (giai đoạn 6, thư mục `ai-bridge/`) và nhật ký kết quả tín hiệu (giai đoạn 7, mục 10). **Mã chưa được biên dịch bằng MetaEditor**: sẽ lên 1.0.0 sau khi biên dịch sạch và đạt các mục nghiệm thu ở mục 9.
+Phiên bản hiện tại: **0.9.2**, ứng viên phát hành. Đã đủ các giai đoạn 1–5, cộng thêm cầu nối Python gọi Claude API (giai đoạn 6, thư mục `ai-bridge/`) nhật ký kết quả tín hiệu (giai đoạn 7, mục 10) và bộ backtest Python (giai đoạn 8, mục 11). **Mã chưa được biên dịch bằng MetaEditor**: sẽ lên 1.0.0 sau khi biên dịch sạch và đạt các mục nghiệm thu ở mục 9.
 
 ---
 
@@ -19,7 +19,8 @@ Phiên bản hiện tại: **0.9.2**, ứng viên phát hành. Đã đủ các g
 | 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | Đã giao |
 | 5 | Rà soát toàn bộ mã nguồn, hoàn thiện README/TESTING, bảng đối chiếu nghiệm thu (mục 9) | Đã giao |
 | 6 | Cầu nối Python gọi Claude API: EA xuất JSON → script gọi Claude → gửi nhận định lên Telegram, in token, giới hạn lần gọi/ngày | Đã giao |
-| 7 | Nhật ký kết quả tín hiệu: mô phỏng từng setup trên nến M1, ghi CSV, thống kê trong tóm tắt ngày, script phân tích | **Đã giao** |
+| 7 | Nhật ký kết quả tín hiệu: mô phỏng từng setup trên nến M1, ghi CSV, thống kê trong tóm tắt ngày, script phân tích | Đã giao |
+| 8 | Backtest Python: script MT5 xuất lịch sử + engine chạy lại logic EA theo từng giờ, xuất CSV cùng định dạng nhật ký | **Đã giao** |
 
 ### Module
 
@@ -35,6 +36,8 @@ mt5-signal-ea/
   Include/AiExport.mqh     Xuất JSON sự kiện cho cầu nối AI (thêm)
   Include/Journal.mqh      Nhật ký kết quả tín hiệu: mô phỏng trên M1, CSV, thống kê (thêm)
   tools/analyze_journal.py Phân tích file nhật ký CSV + test (thêm)
+  Scripts/ExportHistory.mq5 Script MT5 xuất lịch sử nến + spec cho backtest (thêm)
+  backtest/                Bộ backtest Python + test + README riêng (thêm)
   ai-bridge/               Script Python gọi Claude API + test + README riêng (thêm)
   Include/Analysis.mqh     Chấm điểm bias, swing, vùng Entry hội tụ, phá vỡ H4, SL/TP/RR
   Include/Signals.mqh      Vòng đời setup, ưu tiên/tương quan/phơi nhiễm, tổng rủi ro, top K, nội dung tin (thêm)
@@ -408,3 +411,14 @@ Mỗi kèo đóng được ghi một dòng. File dùng UTF-8, phân cách `;`, m
 - **So sánh A/B/C** để chọn cách chốt lời phù hợp với các setup này.
 - **Xem bảng tách nhóm** để tìm nhóm/loại setup kéo kết quả xuống, rồi tắt hoặc sửa nhóm đó. Mỗi lần chỉ thay đổi một thứ, tránh tối ưu quá khớp với dữ liệu quá khứ.
 - **Đây là mô phỏng**, không phải lệnh thật. Kết quả thật còn phụ thuộc trượt giá và việc bạn có vào lệnh đúng như tín hiệu hay không.
+
+---
+
+## 11. Backtest bằng Python (giai đoạn 8)
+
+Hướng dẫn đầy đủ nằm ở **`backtest/README.md`**. Tóm tắt:
+1. **Lấy dữ liệu:** chạy `Scripts/ExportHistory.mq5` trong MT5 để xuất lịch sử MN1/W1/D1/H4/H1/M1 và thông số hợp đồng ra `MQL5/Files/SignalEA/history/`.
+2. **Chạy backtest:** `python backtest/run_backtest.py --data-dir <thư mục history>`. Bộ backtest chạy lại logic của EA theo từng giờ trên nhiều symbol: bias, setup, SL/TP, các bộ lọc, tương quan, phơi nhiễm, tổng rủi ro, top K, giới hạn tin/ngày, vòng đời setup. Kết quả lệnh được mô phỏng theo đúng quy tắc của nhật ký.
+3. **Xem kết quả:** CSV có cùng định dạng `journal_<login>.csv`, và báo cáo được in ra bằng `tools/analyze_journal.py`.
+
+Chỉ dùng thư viện chuẩn Python, không cần cài thêm. Đọc mục 3–4 của `backtest/README.md` để biết các khác biệt so với EA chạy thật và cách tránh tối ưu quá khớp với dữ liệu quá khứ.

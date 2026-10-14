@@ -3,3 +3,5 @@
 __pycache__/
 ai_bridge.log
 *.pyc
+sample_data/
+backtest_trades.csv
