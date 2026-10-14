@@ -193,15 +193,6 @@ int AnaSwings(const MqlRates &r[],const int n,const int strength,const int lookb
   }
 
 //+------------------------------------------------------------------+
-//| Vùng vẽ tay (Giai đoạn 5) - hiện chưa có                         |
-//+------------------------------------------------------------------+
-int AnaManualLevels(const string sym,LevelPt &out[])
-  {
-   ArrayResize(out,0);
-   return 0;
-  }
-
-//+------------------------------------------------------------------+
 //| Tiện ích mức giá                                                 |
 //+------------------------------------------------------------------+
 void AnaAddLevel(LevelPt &arr[],const double price,const string kind)
@@ -377,10 +368,6 @@ bool AnaPullbackZone(const string sym,const int side,const TfSnapshot &snap[],
    AnaAddLevel(all,snap[TFI_H1].smaMid,"SMA"+IntegerToString(InpSmaMid)+" H1");
    AnaAddSwingLevels(all,swH1,"swing H1");
    AnaAddSwingLevels(all,swH4,"swing H4");
-   LevelPt manual[];
-   int nm=AnaManualLevels(sym,manual);
-   for(int i=0;i<nm;i++)
-      AnaAddLevel(all,manual[i].price,manual[i].kind);
 
    // chỉ giữ mức đúng phía và trong phạm vi
    LevelPt lv[];

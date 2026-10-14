@@ -17,8 +17,7 @@ Phiên bản hiện tại: **0.4.0, Giai đoạn 4** (thêm gửi Telegram thậ
 | 2 | Chấm điểm bias đa khung, tìm vùng Entry (confluence), setup chờ hồi/phá vỡ, SL/TP/RR, hủy kèo, hai tầng ngưỡng, nhóm tương quan, phơi nhiễm tiền tệ, xếp hạng top K, giới hạn tin/ngày, cảnh báo tin tức | Đã giao |
 | 3 | Quản lý vốn: lot theo SL thật, `CẢNH BÁO RỦI RO`, tổng rủi ro, "đang chờ, vượt ngưỡng rủi ro" | Phần lớn đã làm sớm ở GĐ2 (mục 4.6 yêu cầu tính tổng rủi ro). GĐ3 còn lại: đối chiếu số liệu thật, tinh chỉnh |
 | 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | **Đã giao** |
-| 5 | Đọc vùng vẽ tay (`OBJ_RECTANGLE`, `OBJ_TREND`) trên mọi chart đang mở | Chưa làm |
-| 6 | Hoàn thiện README/TESTING, đối chiếu nghiệm thu | Một phần (tài liệu GĐ1) |
+| 5 | Hoàn thiện README/TESTING, đối chiếu nghiệm thu | Một phần (tài liệu đã cập nhật theo từng giai đoạn) |
 
 ### Module
 
@@ -198,8 +197,6 @@ Nếu chưa làm bước này, WebRequest sẽ báo lỗi (4014/4060) và EA in 
 | | `InpMaxCurrencySameSide` | 2 | Phơi nhiễm Forex |
 | Tin tức | `InpNewsEnabled`, `InpNewsLookaheadMin`, `InpNewsCurrencies`, `InpNewsIncludeSymbolCcy` | true, 120, USD, false | |
 
-Input của GĐ5 (đọc vùng vẽ tay) sẽ được thêm khi giao giai đoạn đó.
-
 ---
 
 ## 6. Logic phân tích (Giai đoạn 2)
@@ -220,7 +217,7 @@ Bias tổng = Σ trọng số × bias (MN1 1, W1 2, D1 3, H4 2, H1 1; tối đa 
 | Phụ / Khám phá | 7 | 1.8 |
 
 ### 6.2 Setup chờ hồi (Buy/Sell Limit)
-- Các mức giá được xét: SMA50 H4, SMA200 H1, SMA50 H1, swing H1 (3 nến mỗi bên), swing H4 (2 nến mỗi bên), và vùng vẽ tay (GĐ5). Swing là fractal: đỉnh cao hơn N nến mỗi bên.
+- Các mức giá được xét: SMA50 H4, SMA200 H1, SMA50 H1, swing H1 (3 nến mỗi bên), swing H4 (2 nến mỗi bên). Swing là fractal: đỉnh cao hơn N nến mỗi bên.
 - Bias giảm thì xét các mức **phía trên** giá; bias tăng thì xét các mức phía dưới. Mức phải cách giá không quá 2 × ATR(H4).
 - Đi từ mức gần giá nhất ra xa, EA gom các mức nằm trong khoảng 0.5 × ATR(H1). Cụm đầu tiên có **≥ 2 loại yếu tố khác nhau** được chọn (hai swing H1 chỉ tính là một loại).
 - Vùng Entry = trung bình cụm ± 0.15 × ATR(H1), tức rộng 0.3 × ATR(H1). Vùng không được chứa giá hiện tại.
@@ -294,7 +291,7 @@ EA sẽ ghi một file JSON cho mỗi sự kiện vào `MQL5/Files/SignalEA/ai_q
   "setup": { "type": "pullback|breakout", "side": "sell|buy",
              "entry_low": 4172, "entry_high": 4178, "sl": 4196, "tp1": 4135, "tp2": 4100,
              "rr1": 1.7, "rr2": 3.2, "invalidation": "H4 close above 4196", "expiry_hours": 24,
-             "confluence": ["SMA50_H4", "SMA200_H1", "manual_zone"] },
+             "confluence": ["SMA50_H4", "SMA200_H1", "swing_H1"] },
   "bias": { "score": -6, "max": 9, "by_tf": { "MN1": 0, "W1": 0, "D1": -1, "H4": -1, "H1": -1 } },
   "indicators": { "H1": { "close": 0, "sma10": 0, "sma20": 0, "sma50": 0, "sma200": 0,
                           "bb_up": 0, "bb_mid": 0, "bb_low": 0, "rsi": 0, "atr": 0 },

@@ -161,7 +161,6 @@ Input chung: `InpDryRun=true`, `InpLogSnapshots=true`. Nên dùng `InpLogLevel=D
   - Không có setup nào bị báo hai lần.
 - ☐ RAM/CPU ổn định (như T1.8). Bảng trạng thái hiện `max` thời gian chu kỳ chỉ vài giây.
 
-## Giai đoạn 3, 5, 6 (sẽ chi tiết hóa khi giao)
+## Giai đoạn 3 và 5 (sẽ chi tiết hóa khi giao)
 - GĐ3: đối chiếu số liệu rủi ro thật trên Exness, tinh chỉnh.
-- GĐ5: vẽ rectangle/trendline trên chart và kiểm tra yếu tố "vùng vẽ tay" có trong lý do của setup.
-- GĐ6: rà soát toàn bộ nghiệm thu.
+- GĐ5: rà soát toàn bộ nghiệm thu.
