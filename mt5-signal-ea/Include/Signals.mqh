@@ -425,6 +425,11 @@ bool SigBuild(const SymbolRec &rec,const AnaResult &res,const SymbolSpec &sp,con
 
    //--- rủi ro theo SL thật
    double bal=RiskBalance();
+   if(bal<=0.0)
+     {
+      why="chưa đọc được số dư tài khoản";
+      return false;
+     }
    double dist=MathAbs(s.entryRef-s.sl);
    s.minLotRiskMoney=RiskMoney(sp,dist,sp.volMin);
    s.minLotRiskPct=(bal>0.0) ? s.minLotRiskMoney/bal*100.0 : 0.0;
@@ -642,6 +647,11 @@ int SigAdmit(Setup &c,const bool sendDetail,bool &inZone,string &why)
    LogI(StringFormat("[%s] SETUP MỚI %s %s | điểm %d/%d | RR %.2f | chất lượng %.0f | %s (%s)",c.sym,SideName(c.side),
                      SetupTypeName(c.type),c.score,c.maxScore,c.rr1,c.quality,
                      pending ? "CHỜ - vượt ngưỡng rủi ro" : SigStateName(c.state),c.id));
+   SymbolSpec sp;
+   if(RiskGetSpec(c.sym,sp))
+      LogI(StringFormat("[RISK] %s %s: %s%s",c.sym,c.id,
+                        RiskBreakdown(c.sym,sp,MathAbs(c.entryRef-c.sl),c.lots,InpRiskPerTradePct),
+                        c.riskWarn ? " | lot tối thiểu vượt mức -> CẢNH BÁO RỦI RO" : ""));
    if(sendDetail)
       NotifySend(SigMsgNew(g_setups[n],pending,inZone));
    return pending ? 2 : 1;

@@ -3,7 +3,7 @@
 > **EA chỉ báo tín hiệu. Tuyệt đối không đặt, sửa hay đóng lệnh.** Mã nguồn không gọi `OrderSend`, `CTrade` hay bất kỳ hàm giao dịch nào, và không dùng DLL.
 > Tín hiệu chỉ để tham khảo, không phải lời khuyên đầu tư.
 
-Phiên bản hiện tại: **0.4.0, Giai đoạn 4** (thêm gửi Telegram thật, hàng đợi + retry, lưu trạng thái để khởi động lại không báo trùng, tóm tắt cuối ngày).
+Phiên bản hiện tại: **0.5.0**: đã giao Giai đoạn 1–4. Lần này là **Giai đoạn 3**: kiểm chéo tick value, log diễn giải cách tính lot cho từng setup, chặn báo setup khi chưa đọc được số dư.
 
 ---
 
@@ -15,8 +15,8 @@ Phiên bản hiện tại: **0.4.0, Giai đoạn 4** (thêm gửi Telegram thậ
 |---|---|---|
 | 1 | Khung EA (`OnInit/OnTimer/OnDeinit`), khám phá + phân loại + lọc symbol, quét xoay vòng, tính SMA/BB/RSI/ATR từ `CopyRates`, DryRun, bảng trạng thái, self-test đối chiếu `iMA/iBands/iRSI/iATR` + bảng tick value | Đã giao |
 | 2 | Chấm điểm bias đa khung, tìm vùng Entry (confluence), setup chờ hồi/phá vỡ, SL/TP/RR, hủy kèo, hai tầng ngưỡng, nhóm tương quan, phơi nhiễm tiền tệ, xếp hạng top K, giới hạn tin/ngày, cảnh báo tin tức | Đã giao |
-| 3 | Quản lý vốn: lot theo SL thật, `CẢNH BÁO RỦI RO`, tổng rủi ro, "đang chờ, vượt ngưỡng rủi ro" | Phần lớn đã làm sớm ở GĐ2 (mục 4.6 yêu cầu tính tổng rủi ro). GĐ3 còn lại: đối chiếu số liệu thật, tinh chỉnh |
-| 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | **Đã giao** |
+| 3 | Quản lý vốn: lot theo SL thật, `CẢNH BÁO RỦI RO`, tổng rủi ro, "đang chờ, vượt ngưỡng rủi ro" | **Đã giao** (phần tính toán làm sớm ở GĐ2; GĐ3 thêm kiểm chéo tick value và log diễn giải) |
+| 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | Đã giao |
 | 5 | Hoàn thiện README/TESTING, đối chiếu nghiệm thu | Một phần (tài liệu đã cập nhật theo từng giai đoạn) |
 
 ### Module
@@ -27,7 +27,7 @@ mt5-signal-ea/
   Include/Common.mqh       Enum, log, tiện ích chuỗi/thời gian (thêm so với đề bài, dùng chung)
   Include/Universe.mqh     Khám phá, phân loại, lọc symbol, quản lý Market Watch, quét xoay vòng
   Include/Indicators.mqh   SMA/BB/RSI/ATR tự tính từ CopyRates + cache handle (tùy chọn) cho ưu tiên/phụ
-  Include/Risk.mqh         Thông số hợp đồng, rủi ro ở lot X, lot gợi ý theo % rủi ro
+  Include/Risk.mqh         Thông số hợp đồng, rủi ro ở lot X, lot gợi ý theo % rủi ro, kiểm chéo tick value, diễn giải cách tính
   Include/Telegram.mqh     WebRequest sendMessage, tách tin, hàng đợi, retry, xử lý 429/4014/4060, DryRun
   Include/SelfTest.mqh     Đối chiếu chỉ báo tự tính với iMA/iBands/iRSI/iATR + bảng tick value (thêm)
   Include/Analysis.mqh     Chấm điểm bias, swing, vùng Entry hội tụ, phá vỡ H4, SL/TP/RR
@@ -172,7 +172,8 @@ Nếu chưa làm bước này, WebRequest sẽ báo lỗi (4014/4060) và EA in 
 | | `InpSlopeBars` | 3 | Độ dốc SMA20 = SMA20[1] so với SMA20[1+3] |
 | | `InpUseHandlesForWatchlist` | false | Dùng handle chuẩn cho ưu tiên/phụ |
 | Vốn | `InpRiskPerTradePct` | 1.5 | % rủi ro mỗi setup |
-| | `InpMaxTotalRiskPct` | 5 | Tổng rủi ro tối đa (dùng từ GĐ3) |
+| | `InpMaxTotalRiskPct` | 5 | Tổng rủi ro tối đa của các setup đang mở |
+| | `InpTickValueTolPct` | 5 | Cảnh báo khi tick value của broker lệch kiểm chéo quá mức này |
 | Kiểm thử | `InpSelfTest` | false | Đối chiếu chỉ báo + in bảng tick value |
 | | `InpSelfTestSymbols` | BTCUSD,XAUUSD,EURUSD,USDJPY,US30 | Ít nhất 3 nhóm tài sản |
 | | `InpLogSnapshots` | true | In snapshot chỉ báo của ưu tiên/phụ mỗi giờ |
@@ -259,6 +260,16 @@ Mỗi symbol chỉ có tối đa 1 setup mở. Sau khi setup đóng, symbol đó
   - Nếu lot tối thiểu đã vượt 1.5%: dùng lot tối thiểu và gắn nhãn `CẢNH BÁO RỦI RO`.
   - Nếu lot tối thiểu vượt 4% (ngưỡng cứng): không báo, chỉ ghi log.
   - Nếu tổng rủi ro của các setup đang mở cộng thêm setup mới vượt 5%: tin được gắn nhãn **"ĐANG CHỜ, VƯỢT NGƯỠNG RỦI RO"**, setup không được tính vào tổng rủi ro và không được theo dõi giá.
+  - Chưa đọc được số dư (bằng 0, ví dụ lúc terminal mới kết nối): không tạo setup.
+
+### 6.8 Kiểm chéo tick value
+- Rủi ro luôn tính bằng `SYMBOL_TRADE_TICK_VALUE_LOSS` / `TICK_SIZE` của broker. Terminal đã quy đổi giá trị này về tiền tệ tài khoản, nên dùng đúng cho mọi loại tài sản và cả tài khoản không phải USD.
+- Mỗi lần phân tích, EA tự tính lại giá trị kỳ vọng = tick size × contract size × tỷ giá (tiền tệ lợi nhuận → tiền tệ tài khoản). Tỷ giá lấy từ cặp tiền trực tiếp hoặc nghịch đảo, ví dụ USDJPY cho JP225.
+  - Lệch > `InpTickValueTolPct` (5%): log cảnh báo một lần, vẫn dùng số của broker.
+  - Lệch > 10 lần: coi là dữ liệu hỏng, loại symbol (trạng thái "spec bất thường").
+  - Kiểu tính futures hoặc không tìm được tỷ giá: bỏ qua kiểm chéo.
+  - Để lấy tỷ giá, EA có thể thêm cặp quy đổi (ví dụ USDJPY) vào Market Watch.
+- Mỗi setup được báo có một dòng log `[RISK] <symbol> <id>: SL cách ... = N tick × tick value = $/lot | ngân sách 1.5% × số dư = $ → x lot → làm tròn xuống step → lot | rủi ro $ (%)` để đối chiếu tay.
 - **Tin tức**: nếu có tin USD mức cao trong 2 giờ tới (lịch kinh tế MT5), tin setup có thêm dòng ghi chú. Nếu không có dữ liệu lịch thì bỏ qua.
 
 ### 6.7 Mẫu tin
@@ -316,4 +327,5 @@ EA sẽ ghi một file JSON cho mỗi sự kiện vào `MQL5/Files/SignalEA/ai_q
 | `Telegram từ chối (HTTP 401...)` | Token sai: lấy lại token từ @BotFather |
 | `Telegram từ chối (HTTP 400: chat not found)` | Chat id sai, hoặc chưa nhắn cho bot / chưa thêm bot vào group |
 | `Telegram từ chối (HTTP 403...)` | Bạn đã chặn bot hoặc bot bị kick khỏi group |
+| `[RISK] ... tick value broker lệch x%` | Gửi tôi dòng log đó kèm thông số hợp đồng trên Exness để kiểm tra |
 | Muốn xóa toàn bộ setup đã lưu | Gỡ EA, xóa `MQL5/Files/SignalEA/state_<số TK>.txt`, rồi gắn lại EA |

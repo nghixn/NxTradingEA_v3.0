@@ -161,6 +161,27 @@ Input chung: `InpDryRun=true`, `InpLogSnapshots=true`. Nên dùng `InpLogLevel=D
   - Không có setup nào bị báo hai lần.
 - ☐ RAM/CPU ổn định (như T1.8). Bảng trạng thái hiện `max` thời gian chu kỳ chỉ vài giây.
 
-## Giai đoạn 3 và 5 (sẽ chi tiết hóa khi giao)
-- GĐ3: đối chiếu số liệu rủi ro thật trên Exness, tinh chỉnh.
-- GĐ5: rà soát toàn bộ nghiệm thu.
+## Giai đoạn 3: quản lý vốn, đối chiếu tick value (nghiệm thu 5)
+
+### T3.1 Self-test rủi ro
+Input: `InpSelfTest=true`, `InpSelfTestSymbols="BTCUSD,XAUUSD,EURUSD,USDJPY,US30,JP225"`. JP225 dùng để thử quy đổi JPY sang USD; nếu tên trên Exness khác thì thay bằng tên đúng.
+- ☐ Với mỗi symbol, log có các dòng:
+  - `[RISK] <sym> | tick size .. | tick value .. (lỗ ..) USD/lot | contract .. | lot min/step/max`.
+  - `[RISK] <sym> | KHỚP | kiểm chéo: tick size × contract × tỷ giá ... = ...; broker ...; lệch x%` (hoặc `LỆCH` / `HỎNG` / `không kiểm được`, kèm lý do).
+  - `[RISK] <sym> | SL cách ... = N tick × ... = $/lot | ngân sách 1.50% × $1000 = $15 → x lot → làm tròn xuống step 0.01 (min 0.01) = L lot | rủi ro $ (%)`.
+- ☐ Đối chiếu tay với **Contract specification** trên Exness (chuột phải symbol trong Market Watch → Specification): contract size, tick size, volume min/step khớp với log.
+- ☐ Kiểm tra bằng tay: giá đi 1 điểm giá với 1 lot thì lỗ = contract size × tỷ giá. Ví dụ XAUUSD (contract 100): 1.00 giá × 1 lot = $100, nên 0.01 lot = $1.
+- ☐ Các symbol Forex/kim loại/crypto/chỉ số đều ra `KHỚP`. Gửi tôi các dòng `LỆCH` nếu có.
+
+### T3.2 Lot và cảnh báo trên setup thật
+- ☐ Mỗi tin SETUP có một dòng `[RISK] <sym> <id>: ...` tương ứng trong log. Lot trong tin bằng lot trong dòng log, và lot × khoảng cách SL × tick value / tick size khớp "rủi ro ≈ $".
+- ☐ Lot luôn **làm tròn xuống** theo volume step: rủi ro thực tế ≤ 1.5%, trừ khi có nhãn CẢNH BÁO RỦI RO.
+- ☐ CẢNH BÁO RỦI RO: lot = lot tối thiểu, dòng `Lot tối thiểu 0.01 rủi ro ≈ $X (Y%) vượt ngưỡng 1.5%`, và Y nằm trong khoảng 1.5–4%.
+- ☐ Dòng "Tổng rủi ro các setup đang mở" bằng tổng "rủi ro ≈ $" của các setup đang mở (không tính setup "đang chờ, vượt ngưỡng").
+
+### T3.3 Trường hợp biên
+- ☐ Ngay sau khi terminal khởi động (số dư chưa có): không có setup nào, log `setup bị loại: chưa đọc được số dư tài khoản` (nếu có ứng viên).
+- ☐ (Nếu có tài khoản demo không phải USD) số tiền hiển thị theo tiền tệ tài khoản, ví dụ `21.00 EUR`, và kiểm chéo vẫn `KHỚP`.
+
+## Giai đoạn 5 (sẽ chi tiết hóa khi giao)
+- Rà soát toàn bộ nghiệm thu.

@@ -6,8 +6,8 @@
 #define SIGNALEA_COMMON_MQH
 
 #define EA_NAME       "SignalEA"
-#define EA_VERSION    "0.4.0"
-#define EA_STAGE      "Giai đoạn 4"
+#define EA_VERSION    "0.5.0"
+#define EA_STAGE      "Giai đoạn 3"
 #define EA_FILES_DIR  "SignalEA"
 
 //--- Chế độ vũ trụ quét

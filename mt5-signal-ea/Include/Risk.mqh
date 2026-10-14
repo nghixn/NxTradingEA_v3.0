@@ -102,4 +102,135 @@ string FmtLots(const SymbolSpec &sp,const double lots)
    return DoubleToString(lots,RiskStepDigits(sp.volStep));
   }
 
+//+------------------------------------------------------------------+
+//| Kiểm chéo tick value (Giai đoạn 3)                               |
+//| Với Forex/CFD/chỉ số/cổ phiếu: lãi lỗ = Δgiá × contract × lot,   |
+//| nên tick value kỳ vọng = tick size × contract × tỷ giá quy đổi   |
+//| (tiền tệ lợi nhuận -> tiền tệ tài khoản). Futures dùng tick price |
+//| nên không kiểm chéo được.                                        |
+//| Include SAU khai báo input (dùng InpSymbolSuffix).               |
+//+------------------------------------------------------------------+
+#define RCC_OK          0   // khớp trong dung sai
+#define RCC_WARN        1   // lệch quá dung sai -> cảnh báo
+#define RCC_ABSURD      2   // lệch > 10 lần -> dữ liệu hỏng
+#define RCC_UNAVAILABLE 3   // không kiểm chéo được (futures, thiếu tỷ giá...)
+
+string g_rccWarned[];       // symbol đã cảnh báo (mỗi phiên chạy 1 lần)
+
+// Tỷ giá quy đổi 1 đơn vị fromCcy sang toCcy (0 nếu không tìm được)
+double RiskConvRate(const string fromCcy,const string toCcy,string &via)
+  {
+   via="";
+   if(fromCcy=="" || toCcy=="")
+      return 0.0;
+   if(fromCcy==toCcy)
+     {
+      via="cùng tiền tệ";
+      return 1.0;
+     }
+   string cands[2];
+   cands[0]=fromCcy+toCcy+InpSymbolSuffix;
+   cands[1]=toCcy+fromCcy+InpSymbolSuffix;
+   for(int k=0;k<2;k++)
+     {
+      bool isCustom=false;
+      if(!SymbolExist(cands[k],isCustom))
+         continue;
+      if(!(bool)SymbolInfoInteger(cands[k],SYMBOL_SELECT))
+         SymbolSelect(cands[k],true);
+      double bid=SymbolInfoDouble(cands[k],SYMBOL_BID);
+      double ask=SymbolInfoDouble(cands[k],SYMBOL_ASK);
+      if(bid<=0.0 || ask<=0.0)
+         continue;
+      double mid=(bid+ask)*0.5;
+      via=cands[k];
+      return (k==0) ? mid : 1.0/mid;
+     }
+   return 0.0;
+  }
+
+int RiskCrossCheck(const string sym,const SymbolSpec &sp,double &expected,double &diffPct,string &note)
+  {
+   expected=0.0;
+   diffPct=0.0;
+   note="";
+   if(!sp.ok)
+     {
+      note="spec lỗi";
+      return RCC_UNAVAILABLE;
+     }
+   ENUM_SYMBOL_CALC_MODE cm=(ENUM_SYMBOL_CALC_MODE)SymbolInfoInteger(sym,SYMBOL_TRADE_CALC_MODE);
+   bool linear=(cm==SYMBOL_CALC_MODE_FOREX || cm==SYMBOL_CALC_MODE_FOREX_NO_LEVERAGE ||
+                cm==SYMBOL_CALC_MODE_CFD || cm==SYMBOL_CALC_MODE_CFDINDEX ||
+                cm==SYMBOL_CALC_MODE_CFDLEVERAGE || cm==SYMBOL_CALC_MODE_EXCH_STOCKS);
+   if(!linear)
+     {
+      note="không kiểm chéo được với kiểu tính "+EnumToString(cm);
+      return RCC_UNAVAILABLE;
+     }
+   if(sp.contractSize<=0.0)
+     {
+      note="contract size bất thường";
+      return RCC_UNAVAILABLE;
+     }
+   string acc=AccountInfoString(ACCOUNT_CURRENCY);
+   string via="";
+   double rate=RiskConvRate(sp.profitCcy,acc,via);
+   if(rate<=0.0)
+     {
+      note=StringFormat("không tìm được tỷ giá %s -> %s",sp.profitCcy,acc);
+      return RCC_UNAVAILABLE;
+     }
+   expected=sp.tickSize*sp.contractSize*rate;
+   if(expected<=0.0)
+     {
+      note="giá trị kỳ vọng bằng 0";
+      return RCC_UNAVAILABLE;
+     }
+   diffPct=(sp.tickValueLoss-expected)/expected*100.0;
+   note=StringFormat("kiểm chéo: tick size %.10g x contract %.10g x tỷ giá %s->%s %.6g (%s) = %.6g; broker %.6g; lệch %.2f%%",
+                     sp.tickSize,sp.contractSize,sp.profitCcy,acc,rate,via,expected,sp.tickValueLoss,diffPct);
+   double ratio=sp.tickValueLoss/expected;
+   if(ratio>10.0 || ratio<0.1)
+      return RCC_ABSURD;
+   if(MathAbs(diffPct)>InpTickValueTolPct)
+      return RCC_WARN;
+   return RCC_OK;
+  }
+
+// Dùng trong pipeline: false = loại symbol (dữ liệu hỏng). Cảnh báo lệch chỉ log 1 lần/phiên.
+bool RiskSpecSane(const string sym,const SymbolSpec &sp,string &why)
+  {
+   double expected=0.0,diff=0.0;
+   string note="";
+   int r=RiskCrossCheck(sym,sp,expected,diff,note);
+   if(r==RCC_ABSURD)
+     {
+      why="tick value bất thường ("+note+")";
+      return false;
+     }
+   if(r==RCC_WARN && !StrInArray(sym,g_rccWarned))
+     {
+      StrArrayPush(g_rccWarned,sym);
+      LogW(StringFormat("[RISK] %s: tick value broker lệch %.2f%% so với tính tay - vẫn dùng số của broker. %s",sym,diff,note));
+     }
+   return true;
+  }
+
+// Diễn giải cách tính lot để đối chiếu tay
+string RiskBreakdown(const string sym,const SymbolSpec &sp,const double dist,const double lots,const double riskPctTarget)
+  {
+   double bal=RiskBalance();
+   double ticks=(sp.tickSize>0.0) ? dist/sp.tickSize : 0.0;
+   double perLot=ticks*sp.tickValueLoss;
+   double budget=bal*riskPctTarget/100.0;
+   double raw=(perLot>0.0) ? budget/perLot : 0.0;
+   double risk=RiskMoney(sp,dist,lots);
+   return StringFormat("SL cách %s = %.1f tick x %.6g %s/tick/lot = %s/lot | ngân sách %.2f%% x %s = %s -> %.4f lot -> làm tròn xuống step %s (min %s) = %s lot | rủi ro %s (%.2f%%)",
+                       DoubleToString(dist,sp.digits),ticks,sp.tickValueLoss,AccountInfoString(ACCOUNT_CURRENCY),
+                       FmtMoney(perLot),riskPctTarget,FmtMoney(bal),FmtMoney(budget),raw,
+                       FmtLots(sp,sp.volStep),FmtLots(sp,sp.volMin),FmtLots(sp,lots),FmtMoney(risk),
+                       (bal>0.0) ? risk/bal*100.0 : 0.0);
+  }
+
 #endif

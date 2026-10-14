@@ -143,10 +143,17 @@ void SelfTestPrintRisk(const IndConfig &c,const int barsToLoad)
       double riskBudget=bal*InpRiskPerTradePct/100.0;
       double lot=RiskLotForMoney(sp,dist,riskBudget);
       string pct=(bal>0.0) ? DoubleToString(riskMin/bal*100.0,2)+"%" : "n/a";
+      double expTv=0.0,diffTv=0.0;
+      string ccNote="";
+      int cc=RiskCrossCheck(sym,sp,expTv,diffTv,ccNote);
+      string ccTag=(cc==RCC_OK) ? "KHỚP" : ((cc==RCC_WARN) ? "LỆCH" : ((cc==RCC_ABSURD) ? "HỎNG" : "không kiểm được"));
+      LogI(StringFormat("[RISK] %s | %s | %s | kiểu tính %s",sym,ccTag,ccNote,
+                        EnumToString((ENUM_SYMBOL_CALC_MODE)SymbolInfoInteger(sym,SYMBOL_TRADE_CALC_MODE))));
       LogI(StringFormat("[RISK] %s | ATR(H4) %s | SL %s (= %.0f tick) | lot min rủi ro %s (%s) | lot cho %.2f%% (%s): %s",
                         sym,FmtPrice(sym,atr),FmtPrice(sym,dist),dist/sp.tickSize,FmtMoney(riskMin),pct,
                         InpRiskPerTradePct,FmtMoney(riskBudget),
                         (lot>0.0) ? FmtLots(sp,lot) : "0 (lot tối thiểu vượt ngưỡng)"));
+      LogI("[RISK] "+sym+" | "+RiskBreakdown(sym,sp,dist,(lot>0.0) ? lot : sp.volMin,InpRiskPerTradePct));
      }
   }
 

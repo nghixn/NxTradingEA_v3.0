@@ -4,7 +4,7 @@
 //| Không dùng DLL. Không có hàm giao dịch nào trong mã nguồn.       |
 //+------------------------------------------------------------------+
 #property copyright   "NxTrading"
-#property version     "0.40"
+#property version     "0.50"
 #property description "Quét nhiều symbol, phân tích đa khung, gửi tín hiệu Telegram. Không giao dịch."
 
 #include "Include\Common.mqh"
@@ -77,6 +77,7 @@ input bool               InpUseHandlesForWatchlist = false;              // Dùn
 input group "=== 7. Quản lý vốn (chỉ tính, không giao dịch) ==="
 input double             InpRiskPerTradePct        = 1.5;                // % rủi ro mỗi setup
 input double             InpMaxTotalRiskPct        = 5.0;                // % tổng rủi ro tối đa các setup đang mở
+input double             InpTickValueTolPct        = 5.0;                // Cảnh báo khi tick value broker lệch kiểm chéo quá (%)
 
 input group "=== 8. Kiểm thử ==="
 input bool               InpSelfTest               = false;              // Chạy self-test chỉ báo + bảng tick value
@@ -179,7 +180,7 @@ bool ValidateInputs()
      { LogE("InpDailySummaryHour phải trong [0..23]."); ok=false; }
    if(InpTgEnabled && StrTrim(InpTgToken)!="" && StringFind(InpTgToken,":")<0)
       LogW("Token Telegram có vẻ sai định dạng (dạng đúng: 123456789:AA...).");
-   if(InpRiskPerTradePct<=0.0 || InpMaxMinLotRiskPct<=0.0 || InpFeasSlAtrMult<=0.0)
+   if(InpRiskPerTradePct<=0.0 || InpMaxMinLotRiskPct<=0.0 || InpFeasSlAtrMult<=0.0 || InpTickValueTolPct<=0.0)
      { LogE("Tham số rủi ro phải > 0."); ok=false; }
    if(InpMaxDeferPerHour<1)
      { LogE("InpMaxDeferPerHour phải >= 1."); ok=false; }
@@ -352,6 +353,12 @@ bool ProcessSymbol(const int idx,const datetime hk)
    if(!RiskGetSpec(sym,sp))
      {
       FinishSymbol(idx,hk,SST_BAD_SPEC,"thông số hợp đồng bất thường: "+sp.err);
+      return false;
+     }
+   string specWhy="";
+   if(!RiskSpecSane(sym,sp,specWhy))
+     {
+      FinishSymbol(idx,hk,SST_BAD_SPEC,specWhy);
       return false;
      }
    //--- 5. H1 (có nến mới đóng?)
