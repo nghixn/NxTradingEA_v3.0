@@ -1,0 +1,5 @@
+*.ex5
+*.log
+__pycache__/
+ai_bridge.log
+*.pyc
