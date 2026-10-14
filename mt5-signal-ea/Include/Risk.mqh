@@ -19,12 +19,21 @@ struct SymbolSpec
    double            tickSize;
    double            tickValue;       // giá trị 1 tick cho 1 lot (tiền tệ tài khoản)
    double            tickValueLoss;   // giá trị 1 tick khi lỗ (dùng tính rủi ro)
+   double            tickValueBroker; // tick value lỗ gốc của broker (trước khi chỉnh thận trọng)
+   bool              tvAdjusted;      // true = đã nâng tickValueLoss lên theo kiểm chéo
    double            volMin;
    double            volMax;
    double            volStep;
    double            contractSize;
    string            profitCcy;
   };
+
+#define RCC_OK          0   // khớp trong dung sai
+#define RCC_WARN        1   // lệch quá dung sai -> cảnh báo
+#define RCC_ABSURD      2   // lệch > 10 lần -> dữ liệu hỏng
+#define RCC_UNAVAILABLE 3   // không kiểm chéo được (futures, thiếu tỷ giá...)
+// Khai báo trước (định nghĩa bên dưới)
+int RiskCrossCheck(const string sym,const SymbolSpec &sp,double &expected,double &diffPct,string &note);
 
 bool RiskGetSpec(const string sym,SymbolSpec &sp)
   {
@@ -51,6 +60,20 @@ bool RiskGetSpec(const string sym,SymbolSpec &sp)
    else if(sp.volMax<sp.volMin)
       sp.err=StringFormat("volume max < min (%.10g < %.10g)",sp.volMax,sp.volMin);
    sp.ok=(sp.err=="");
+   sp.tickValueBroker=sp.tickValueLoss;
+   sp.tvAdjusted=false;
+   //--- thận trọng: broker báo tick value THẤP hơn tính tay quá dung sai -> dùng số tính tay
+   //    (ước thấp rủi ro nguy hiểm hơn ước cao: lot gợi ý không bao giờ vượt ngân sách)
+   if(sp.ok)
+     {
+      double expected=0.0,diff=0.0;
+      string note="";
+      if(RiskCrossCheck(sym,sp,expected,diff,note)==RCC_WARN && expected>sp.tickValueLoss)
+        {
+         sp.tickValueLoss=expected;
+         sp.tvAdjusted=true;
+        }
+     }
    return sp.ok;
   }
 
@@ -110,10 +133,6 @@ string FmtLots(const SymbolSpec &sp,const double lots)
 //| nên không kiểm chéo được.                                        |
 //| Include SAU khai báo input (dùng InpSymbolSuffix).               |
 //+------------------------------------------------------------------+
-#define RCC_OK          0   // khớp trong dung sai
-#define RCC_WARN        1   // lệch quá dung sai -> cảnh báo
-#define RCC_ABSURD      2   // lệch > 10 lần -> dữ liệu hỏng
-#define RCC_UNAVAILABLE 3   // không kiểm chéo được (futures, thiếu tỷ giá...)
 
 string g_rccWarned[];       // symbol đã cảnh báo (mỗi phiên chạy 1 lần)
 
@@ -187,10 +206,11 @@ int RiskCrossCheck(const string sym,const SymbolSpec &sp,double &expected,double
       note="giá trị kỳ vọng bằng 0";
       return RCC_UNAVAILABLE;
      }
-   diffPct=(sp.tickValueLoss-expected)/expected*100.0;
+   double broker=sp.tickValueBroker;
+   diffPct=(broker-expected)/expected*100.0;
    note=StringFormat("kiểm chéo: tick size %.10g x contract %.10g x tỷ giá %s->%s %.6g (%s) = %.6g; broker %.6g; lệch %.2f%%",
-                     sp.tickSize,sp.contractSize,sp.profitCcy,acc,rate,via,expected,sp.tickValueLoss,diffPct);
-   double ratio=sp.tickValueLoss/expected;
+                     sp.tickSize,sp.contractSize,sp.profitCcy,acc,rate,via,expected,broker,diffPct);
+   double ratio=broker/expected;
    if(ratio>10.0 || ratio<0.1)
       return RCC_ABSURD;
    if(MathAbs(diffPct)>InpTickValueTolPct)
@@ -212,7 +232,8 @@ bool RiskSpecSane(const string sym,const SymbolSpec &sp,string &why)
    if(r==RCC_WARN && !StrInArray(sym,g_rccWarned))
      {
       StrArrayPush(g_rccWarned,sym);
-      LogW(StringFormat("[RISK] %s: tick value broker lệch %.2f%% so với tính tay - vẫn dùng số của broker. %s",sym,diff,note));
+      LogW(StringFormat("[RISK] %s: tick value broker lệch %.2f%% so với tính tay - %s. %s",sym,diff,
+                        sp.tvAdjusted ? "dùng số tính tay (lớn hơn, thận trọng)" : "vẫn dùng số của broker (lớn hơn)",note));
      }
    return true;
   }
