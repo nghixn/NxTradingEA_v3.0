@@ -4,7 +4,7 @@
 //| Không dùng DLL. Không có hàm giao dịch nào trong mã nguồn.       |
 //+------------------------------------------------------------------+
 #property copyright   "NxTrading"
-#property version     "0.10"
+#property version     "0.20"
 #property description "Quét nhiều symbol, phân tích đa khung, gửi tín hiệu Telegram. Không giao dịch."
 
 #include "Include\Common.mqh"
@@ -79,10 +79,55 @@ input bool               InpSelfTest               = false;              // Ch�
 input string             InpSelfTestSymbols        = "BTCUSD,XAUUSD,EURUSD,USDJPY,US30"; // Symbol self-test (>= 3 nhóm)
 input bool               InpLogSnapshots           = true;               // In snapshot chỉ báo của ưu tiên/phụ mỗi giờ
 
+input group "=== 9. Bias & ngưỡng theo tầng ==="
+input int                InpWeightMN1              = 1;                  // Trọng số MN1
+input int                InpWeightW1               = 2;                  // Trọng số W1
+input int                InpWeightD1               = 3;                  // Trọng số D1
+input int                InpWeightH4               = 2;                  // Trọng số H4
+input int                InpWeightH1               = 1;                  // Trọng số H1
+input int                InpBiasMinConditions      = 3;                  // Số điều kiện tối thiểu (trên 4) để khung là tăng/giảm
+input int                InpMinScorePriority       = 5;                  // Ưu tiên: |điểm bias| tối thiểu
+input double             InpMinRRPriority          = 1.3;                // Ưu tiên: RR TP1 tối thiểu
+input int                InpMinScoreOther          = 7;                  // Phụ/Khám phá: |điểm bias| tối thiểu
+input double             InpMinRROther             = 1.8;                // Phụ/Khám phá: RR TP1 tối thiểu
+
+input group "=== 10. Setup ==="
+input bool               InpEnablePullback         = true;               // Setup chờ hồi (limit)
+input bool               InpEnableBreakout         = true;               // Setup phá vỡ (H4)
+input double             InpEntryZoneAtrH1         = 0.3;                // Độ rộng vùng Entry (x ATR H1)
+input double             InpConfluenceTolAtrH1     = 0.5;                // Dung sai gom yếu tố hội tụ (x ATR H1)
+input int                InpMinConfluence          = 2;                  // Số yếu tố hội tụ tối thiểu
+input double             InpMaxEntryDistAtrH4      = 2.0;                // Vùng Entry cách giá tối đa (x ATR H4)
+input int                InpSwingStrengthH1        = 3;                  // Swing H1: số nến mỗi bên
+input int                InpSwingStrengthH4        = 2;                  // Swing H4: số nến mỗi bên
+input int                InpSwingStrengthD1        = 2;                  // Swing D1: số nến mỗi bên
+input int                InpSwingLookback          = 150;                // Số nến tìm swing
+input double             InpSlBufferAtrH4          = 0.25;               // SL: thêm ngoài swing (x ATR H4)
+input double             InpSlFallbackAtrH4        = 1.0;                // SL khi không có swing (x ATR H4 ngoài vùng)
+input double             InpTpMinGapAtrH4          = 0.3;                // TP phải cách Entry tối thiểu (x ATR H4)
+input int                InpSetupExpiryHours       = 24;                 // Hết hạn nếu giá chưa vào vùng (giờ)
+input int                InpTriggeredMaxHours      = 72;                 // Ngừng theo dõi sau khi vào vùng (giờ)
+input int                InpCooldownMinutes        = 240;                // Cooldown sau khi setup đóng (phút)
+
+input group "=== 11. Xếp hạng, tương quan, chống spam ==="
+input int                InpTopK                   = 3;                  // Top K setup phụ/khám phá mỗi vòng quét
+input int                InpMaxNewPerDay           = 10;                 // Tin setup mới tối đa/ngày (ưu tiên không tính)
+input string             InpCorrelationGroups      = "KIM_LOAI:XAU,XAG,XPT,XPD;CRYPTO:BTC,ETH,LTC,XRP,BCH,SOL,ADA,DOGE;CHI_SO_MY:US30,US500,USTEC,US100;DAU:UKOIL,USOIL,XBR,XTI"; // Nhóm tương quan TÊN:MÃ,...;...
+input int                InpMaxCurrencySameSide    = 2;                  // Forex: tối đa số setup cùng phía mỗi đồng tiền
+
+input group "=== 12. Tin tức (best-effort) ==="
+input bool               InpNewsEnabled            = true;               // Ghi chú tin mức cao
+input int                InpNewsLookaheadMin       = 120;                // Khoảng nhìn trước (phút)
+input string             InpNewsCurrencies         = "USD";              // Tiền tệ cần theo dõi
+input bool               InpNewsIncludeSymbolCcy   = false;              // Thêm tiền tệ của chính symbol
+
 #include "Include\Risk.mqh"
 #include "Include\Indicators.mqh"
 #include "Include\Universe.mqh"
 #include "Include\Telegram.mqh"
+#include "Include\Analysis.mqh"
+#include "Include\News.mqh"
+#include "Include\Signals.mqh"
 #include "Include\SelfTest.mqh"
 
 //+------------------------------------------------------------------+
@@ -129,6 +174,19 @@ bool ValidateInputs()
      { LogE("InpMaxDeferPerHour phải >= 1."); ok=false; }
    if(InpMinBarsD1<30 || InpMinBarsH1<30 || InpMinBarsH4<30)
      { LogE("Số nến tối thiểu D1/H1/H4 phải >= 30."); ok=false; }
+   if(InpWeightMN1<0 || InpWeightW1<0 || InpWeightD1<0 || InpWeightH4<0 || InpWeightH1<0 ||
+      InpWeightMN1+InpWeightW1+InpWeightD1+InpWeightH4+InpWeightH1<=0)
+     { LogE("Trọng số bias phải >= 0 và tổng > 0."); ok=false; }
+   if(InpBiasMinConditions<1 || InpBiasMinConditions>4)
+     { LogE("InpBiasMinConditions phải trong [1..4]."); ok=false; }
+   if(InpMinRRPriority<=0.0 || InpMinRROther<=0.0 || InpEntryZoneAtrH1<=0.0 || InpConfluenceTolAtrH1<0.0 ||
+      InpMaxEntryDistAtrH4<=0.0 || InpSlBufferAtrH4<0.0 || InpSlFallbackAtrH4<=0.0 || InpTpMinGapAtrH4<0.0)
+     { LogE("Tham số setup (RR/ATR) không hợp lệ."); ok=false; }
+   if(InpMinConfluence<1 || InpSwingStrengthH1<1 || InpSwingStrengthH4<1 || InpSwingStrengthD1<1 || InpSwingLookback<20)
+     { LogE("Tham số swing/hội tụ không hợp lệ."); ok=false; }
+   if(InpSetupExpiryHours<1 || InpTriggeredMaxHours<1 || InpCooldownMinutes<0 || InpTopK<1 || InpMaxNewPerDay<0 ||
+      InpMaxCurrencySameSide<1 || InpMaxTotalRiskPct<=0.0 || InpNewsLookaheadMin<1)
+     { LogE("Tham số thời hạn/xếp hạng/rủi ro không hợp lệ."); ok=false; }
    if(InpTgEnabled && !InpDryRun && (InpTgToken=="" || InpTgChatId==""))
       LogW("Telegram đang bật nhưng thiếu token/chat id - tin sẽ chỉ in ra log.");
    return ok;
@@ -173,6 +231,9 @@ string BuildStartupMessage()
    m+="Ưu tiên: "+ListByTier(TIER_PRIORITY)+"\n";
    m+="Phụ: "+ListByTier(TIER_SECONDARY)+"\n";
    m+="Khám phá: "+IntegerToString(disc)+" symbol"+(groups=="" ? "" : " ("+groups+")")+"\n";
+   m+=StringFormat("Ngưỡng: Ưu tiên điểm >= %d, RR >= %.1f | Phụ/Khám phá điểm >= %d, RR >= %.1f | Top %d, tối đa %d tin/ngày\n",
+                   InpMinScorePriority,InpMinRRPriority,InpMinScoreOther,InpMinRROther,InpTopK,InpMaxNewPerDay);
+   m+=StringFormat("Rủi ro: %.1f%%/setup, tổng tối đa %.1f%%\n",InpRiskPerTradePct,InpMaxTotalRiskPct);
    m+="Thời gian: "+FmtDisplayTime(TimeTradeServer())+"\n";
    m+="EA chỉ báo tín hiệu, không đặt lệnh. Chỉ là tham khảo, không phải lời khuyên đầu tư.";
    return m;
@@ -182,7 +243,7 @@ string BuildStartupMessage()
 //| Snapshot chỉ báo (log kiểm thử Giai đoạn 1)                      |
 //+------------------------------------------------------------------+
 void LogSnapshot(const int idx,const SymbolSpec &sp,const TfSnapshot &snap[],const double spread,
-                 const double minRisk,const double lotSuggest)
+                 const double minRisk,const double lotSuggest,const string biasText,const string analysisNote)
   {
    string sym=g_uni[idx].name;
    int dg=sp.digits;
@@ -197,6 +258,8 @@ void LogSnapshot(const int idx,const SymbolSpec &sp,const TfSnapshot &snap[],con
                          FmtPrice(sym,spread),g_uni[idx].spreadAtrPct,FmtLots(sp,sp.volMin),FmtMoney(minRisk),
                          (bal>0.0) ? DoubleToString(minRisk/bal*100.0,2)+"%" : "n/a",InpFeasSlAtrMult,
                          InpRiskPerTradePct,(lotSuggest>0.0) ? FmtLots(sp,lotSuggest) : "0 (lot min vượt mức)"));
+   LogI(tag+"Bias: "+biasText);
+   LogI(tag+"Phân tích: "+analysisNote);
    LogI(tag+StringFormat("TF | nến | Close | SMA%d | SMA%d | SMA%d | SMA%d | BB trên | BB dưới | RSI | ATR",
                          g_ind.smaFast,g_ind.smaBase,g_ind.smaMid,g_ind.smaSlow));
    for(int t=0;t<TFI_COUNT;t++)
@@ -222,7 +285,8 @@ void FinishSymbol(const int idx,const datetime hk,const int code,const string te
    UniSetStatus(idx,code,text);
    g_uni[idx].lastHourKey=hk;
    g_uni[idx].deferCount=0;
-   UniReleaseIfOwned(idx);
+   if(!SigHasOpen(g_uni[idx].name) && !SigHasCandidate(g_uni[idx].name))
+      UniReleaseIfOwned(idx);
   }
 
 void DeferSymbol(const int idx,const datetime hk,const int code,const string text)
@@ -368,16 +432,41 @@ bool ProcessSymbol(const int idx,const datetime hk)
      }
    double lotSuggest=RiskLotForMoney(sp,dist,bal*InpRiskPerTradePct/100.0);
 
-   //--- 11. Phân tích bias/setup: Giai đoạn 2
+   //--- 11. bias + setup
+   string cwhy="";
+   bool allow=SigCanCreate(sym,now,cwhy);
+   bool newH4=(h4[1].time!=g_uni[idx].lastH4Seen);
+   AnaResult res;
+   AnaAnalyze(sym,g_uni[idx].tier,h4,nH4,h1,nH1,d1,nD1,snap,newH4,allow,res);
+   g_uni[idx].lastH4Seen=h4[1].time;
+   g_uni[idx].biasScore=res.score;
+   string note=allow ? res.note : cwhy;
+   if(res.hasSetup)
+     {
+      Setup c;
+      string why="";
+      if(SigBuild(g_uni[idx],res,sp,spreadPct,h4[1].time,c,why))
+        {
+         note=StringFormat("có setup %s %s, RR %.2f",SideName(c.side),SetupTypeName(c.type),c.rr1);
+         SigOnCandidate(c);
+        }
+      else
+        {
+         note="setup bị loại: "+why;
+         LogI(StringFormat("[%s] %s",sym,note));
+        }
+     }
+   else
+      LogD(StringFormat("[%s] không có setup: %s | bias %d/%d",sym,note,res.score,res.maxScore));
 
    //--- 12. hoàn tất
    g_uni[idx].lastClosedH1=h1[1].time;
    g_uni[idx].lastAnalyzed=now;
    g_analyzedThisHour++;
-   FinishSymbol(idx,hk,SST_OK,StringFormat("spread %.1f%% ATR(H1), lot min rủi ro %s",spreadPct,
-                (minRiskPct==EMPTY_VALUE) ? "n/a" : DoubleToString(minRiskPct,2)+"%"));
+   FinishSymbol(idx,hk,SST_OK,StringFormat("spread %.1f%% ATR(H1), lot min rủi ro %s, bias %d/%d",spreadPct,
+                (minRiskPct==EMPTY_VALUE) ? "n/a" : DoubleToString(minRiskPct,2)+"%",res.score,res.maxScore));
    if(InpLogSnapshots && g_uni[idx].tier!=TIER_DISCOVERY)
-      LogSnapshot(idx,sp,snap,spread,minRisk,lotSuggest);
+      LogSnapshot(idx,sp,snap,spread,minRisk,lotSuggest,AnaBiasText(res),note);
    return true;
   }
 
@@ -466,6 +555,7 @@ void CheckHourDone(const datetime hk,const datetime now)
    if(done+blocked<n)
       return;
    g_hourDoneLogged=true;
+   SigFlushRound(hk);
    LogI(StringFormat("Hoàn tất vòng quét giờ %s sau %d phút: phân tích %d/%d symbol | %s",
                      TimeToString(hk,TIME_DATE|TIME_MINUTES),(int)(((long)now-(long)g_hourStartedAt)/60),
                      g_analyzedThisHour,n,StatusSummary()));
@@ -504,10 +594,11 @@ void UpdatePanel(const string note)
      {
       if(g_uni[i].tier==TIER_DISCOVERY)
          continue;
-      s+=StringFormat("%s [%s] %s | RSI H1 %s | spread %s%% ATR | lot min %s%%\n",
-                      g_uni[i].name,TierName(g_uni[i].tier),StatusName(g_uni[i].status),
+      s+=StringFormat("%s [%s] %s | bias %+d | RSI H1 %s | spread %s%% ATR | lot min %s%%\n",
+                      g_uni[i].name,TierName(g_uni[i].tier),StatusName(g_uni[i].status),g_uni[i].biasScore,
                       FmtVal(g_uni[i].rsiH1,1),FmtVal(g_uni[i].spreadAtrPct,1),FmtVal(g_uni[i].minLotRiskPct,2));
      }
+   s+=SigPanelText();
    Comment(s);
   }
 
@@ -543,6 +634,8 @@ int OnInit()
      }
 
    TimeInitOffsets(InpDisplayGmtOffset);
+   SigInit();
+   SigRollDay();
    LogI(StringFormat("=== %s v%s (%s) khởi động | DryRun=%s | server GMT%+.1f | hiển thị %s | tải %d nến/khung ===",
                      EA_NAME,EA_VERSION,EA_STAGE,InpDryRun ? "BẬT" : "TẮT",g_serverGmtOffsetSec/3600.0,
                      g_displayTzLabel,g_barsToLoad));
@@ -597,9 +690,16 @@ void OnTimer()
       UniBuild();
      }
 
+   NewsRefresh(now);
+   SigRollDay();
+   SigMonitor(now);
+
    datetime hk=HourKey(now);
    if(hk!=g_curHourKey)
      {
+      // vòng quét giờ trước chưa xong vẫn phải xếp hạng ứng viên đã có
+      if(ArraySize(g_cands)>0)
+         SigFlushRound(g_curHourKey);
       g_curHourKey=hk;
       g_hourStartedAt=now;
       g_hourDoneLogged=false;

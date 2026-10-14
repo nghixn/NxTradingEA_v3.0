@@ -3,7 +3,7 @@
 > **EA chỉ báo tín hiệu. Tuyệt đối không đặt, sửa hay đóng lệnh.** Mã nguồn không gọi `OrderSend`, `CTrade` hay bất kỳ hàm giao dịch nào, và không dùng DLL.
 > Tín hiệu chỉ để tham khảo, không phải lời khuyên đầu tư.
 
-Phiên bản hiện tại: **0.1.0, Giai đoạn 1** (khung EA, khám phá/lọc symbol, đọc chỉ báo, DryRun, self-test).
+Phiên bản hiện tại: **0.2.0, Giai đoạn 2** (thêm phân tích bias, setup chờ hồi/phá vỡ, SL/TP, quy tắc ưu tiên/tương quan/phơi nhiễm, tổng rủi ro, xếp hạng, tin tức).
 
 ---
 
@@ -13,9 +13,9 @@ Phiên bản hiện tại: **0.1.0, Giai đoạn 1** (khung EA, khám phá/lọc
 
 | GĐ | Nội dung | Trạng thái |
 |---|---|---|
-| 1 | Khung EA (`OnInit/OnTimer/OnDeinit`), khám phá + phân loại + lọc symbol, quét xoay vòng, tính SMA/BB/RSI/ATR từ `CopyRates`, DryRun, bảng trạng thái, self-test đối chiếu `iMA/iBands/iRSI/iATR` + bảng tick value | **Đã giao** |
-| 2 | Chấm điểm bias đa khung, tìm vùng Entry (confluence), setup chờ hồi/phá vỡ, SL/TP/RR, hủy kèo, hai tầng ngưỡng, nhóm tương quan, phơi nhiễm tiền tệ, xếp hạng top K, cảnh báo tin tức | Chưa làm |
-| 3 | Quản lý vốn đầy đủ: lot gợi ý theo SL thật, `CẢNH BÁO RỦI RO`, tổng rủi ro các setup đang mở, trạng thái "vượt ngưỡng rủi ro" | Chưa làm (GĐ1 đã có hàm tính lot/rủi ro) |
+| 1 | Khung EA (`OnInit/OnTimer/OnDeinit`), khám phá + phân loại + lọc symbol, quét xoay vòng, tính SMA/BB/RSI/ATR từ `CopyRates`, DryRun, bảng trạng thái, self-test đối chiếu `iMA/iBands/iRSI/iATR` + bảng tick value | Đã giao |
+| 2 | Chấm điểm bias đa khung, tìm vùng Entry (confluence), setup chờ hồi/phá vỡ, SL/TP/RR, hủy kèo, hai tầng ngưỡng, nhóm tương quan, phơi nhiễm tiền tệ, xếp hạng top K, giới hạn tin/ngày, cảnh báo tin tức | **Đã giao** |
+| 3 | Quản lý vốn: lot theo SL thật, `CẢNH BÁO RỦI RO`, tổng rủi ro, "đang chờ, vượt ngưỡng rủi ro" | Phần lớn đã làm sớm ở GĐ2 (mục 4.6 yêu cầu tính tổng rủi ro). GĐ3 còn lại: đối chiếu số liệu thật, tinh chỉnh |
 | 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | Chưa làm (GĐ1 đã có tách tin + DryRun) |
 | 5 | Đọc vùng vẽ tay (`OBJ_RECTANGLE`, `OBJ_TREND`) trên mọi chart đang mở | Chưa làm |
 | 6 | Hoàn thiện README/TESTING, đối chiếu nghiệm thu | Một phần (tài liệu GĐ1) |
@@ -31,7 +31,9 @@ mt5-signal-ea/
   Include/Risk.mqh         Thông số hợp đồng, rủi ro ở lot X, lot gợi ý theo % rủi ro
   Include/Telegram.mqh     Tách tin theo giới hạn ký tự, DryRun (GĐ4: WebRequest, hàng đợi, retry)
   Include/SelfTest.mqh     Đối chiếu chỉ báo tự tính với iMA/iBands/iRSI/iATR + bảng tick value (thêm)
-  Include/Analysis.mqh     (GĐ2) chấm điểm bias, tìm vùng, SL/TP
+  Include/Analysis.mqh     Chấm điểm bias, swing, vùng Entry hội tụ, phá vỡ H4, SL/TP/RR
+  Include/Signals.mqh      Vòng đời setup, ưu tiên/tương quan/phơi nhiễm, tổng rủi ro, top K, nội dung tin (thêm)
+  Include/News.mqh         Lịch kinh tế MT5: tin mức cao trong 2 giờ tới (best-effort, thêm)
   Include/State.mqh        (GĐ4) lưu/đọc trạng thái
   README.md, TESTING.md
 ```
@@ -48,7 +50,12 @@ OnTimer (30s)
         → CopyRates H1 (có nến H1 mới đóng?) → D1, H4 (bắt buộc) → W1, MN1 (tùy chọn)
         → snapshot SMA/BB/RSI/ATR 5 khung (shift 1 = nến đã đóng)
         → lọc spread ≤ 15% ATR(H1) → lọc vốn (lot tối thiểu ≤ 4% số dư)
-        → [GĐ2] bias + setup → [GĐ3] rủi ro → [GĐ4] Telegram + lưu trạng thái
+        → bias 5 khung → setup chờ hồi / phá vỡ → SL/TP/RR → lot/rủi ro theo SL thật
+        → Ưu tiên: kiểm tra tương quan/phơi nhiễm/tổng rủi ro → báo NGAY (tin chi tiết)
+        → Phụ/Khám phá: vào danh sách ứng viên
+ ├─ Hết vòng quét giờ (hoặc sang giờ mới): xếp hạng ứng viên → top K → giới hạn tin/ngày
+ │     → kiểm tra tương quan/phơi nhiễm/tổng rủi ro → 1 tin tổng hợp (hoặc 1 tin chi tiết nếu chỉ có 1 setup)
+ └─ SigMonitor (mỗi chu kỳ, rất nhẹ): giá vào vùng Entry / H4 đóng vượt SL / hết hạn / chạm mục tiêu
         → gỡ symbol khám phá khỏi Market Watch (nếu EA đã thêm)
 ```
 
@@ -62,12 +69,14 @@ OnTimer (30s)
 4. **Trade mode**: chỉ nhận `SYMBOL_TRADE_MODE_FULL`.
 5. **Phiên giao dịch**: dùng `SymbolInfoSessionTrade` theo giờ server. Nếu báo giá cũ hơn `InpMaxQuoteAgeMin` (mặc định 60 phút) thì coi như nghỉ lễ.
 6. **Market Watch**: symbol khám phá chưa có trong Market Watch được EA thêm vào (để có báo giá/tick value) khi số symbol đang hiển thị < `InpMaxMarketWatch` (60), rồi gỡ ra sau khi quét (`InpReleaseSymbolsAfterScan`). Symbol bạn tự thêm thì EA không gỡ. Khi bạn đã có > 60 symbol trong Market Watch, EA cảnh báo mỗi giờ.
-7. **Lọc vốn ở GĐ1** dùng **SL giả định = 1.0 × ATR(H4)** (`InpFeasSlAtrMult`) vì chưa có SL thật. Từ GĐ2, rủi ro được tính lại theo SL thật của setup.
-8. **Nhịp phân tích**: mỗi symbol được phân tích tối đa 1 lần/giờ server, ngay sau khi nến H1 đóng và đã có tick của giờ mới. Với khoảng 200 symbol, N = 5 và timer 30s, một vòng quét hết khoảng 20 phút. Ưu tiên/phụ luôn xử lý trước, thường trong chu kỳ đầu tiên của giờ. (GĐ2 sẽ thêm kiểm tra giá vào vùng Entry mỗi chu kỳ cho các setup đang hoạt động, rất nhẹ vì chỉ đọc bid/ask.)
+7. **Lọc vốn có hai lớp**. Lớp 1 (trước khi phân tích, để loại sớm và tiết kiệm CPU) dùng **SL giả định = 1.0 × ATR(H4)** (`InpFeasSlAtrMult`). Lớp 2 tính lại theo SL thật của setup.
+8. **Nhịp phân tích**: mỗi symbol được phân tích tối đa 1 lần/giờ server, ngay sau khi nến H1 đóng và đã có tick của giờ mới. Với khoảng 200 symbol, N = 5 và timer 30s, một vòng quét hết khoảng 20 phút. Ưu tiên/phụ luôn xử lý trước, thường trong chu kỳ đầu tiên của giờ. Các setup đang mở được theo dõi mỗi chu kỳ (giá vào vùng Entry, hủy kèo, hết hạn); việc này rất nhẹ vì chỉ đọc bid/ask và 1 nến H4.
 9. **Chỉ báo**: tự tính từ `CopyRates` cho mọi symbol, cùng công thức với chỉ báo chuẩn MT5: BB dùng độ lệch chuẩn tổng thể, RSI làm trơn Wilder, ATR là SMA của True Range. Handle `iMA/iBands/iRSI/iATR` cho ưu tiên/phụ là tùy chọn (`InpUseHandlesForWatchlist`, mặc định tắt để tiết kiệm RAM; nếu bật thì cần 35 handle cho mỗi symbol và chúng được giải phóng ở `OnDeinit`).
 10. **MN1/W1 thiếu dữ liệu** (ví dụ thiếu nến cho SMA200): giá trị là `EMPTY_VALUE`, hiển thị `n/a`, không báo lỗi.
 11. **Múi giờ hiển thị**: GMT+7. Độ lệch giờ server được tính bằng `TimeTradeServer() - TimeGMT()` và làm tròn tới 15 phút.
 12. **Mã hóa file**: các file nguồn là UTF-8 có BOM để MetaEditor đọc đúng chuỗi tiếng Việt.
+13. **Trạng thái setup ở GĐ2 chỉ nằm trong RAM**: khởi động lại EA thì mất danh sách setup đang mở. GĐ4 sẽ lưu ra file và chống báo trùng khi khởi động lại.
+14. **Tin tổng hợp** được gửi khi xong vòng quét giờ (hoặc khi sang giờ mới). Tin chi tiết cho ưu tiên được gửi ngay, không đợi hết vòng.
 
 ---
 
@@ -148,21 +157,106 @@ Nếu chưa làm bước này, EA sẽ báo lỗi 4060 và in lại hướng d�
 | | `InpSelfTestSymbols` | BTCUSD,XAUUSD,EURUSD,USDJPY,US30 | Ít nhất 3 nhóm tài sản |
 | | `InpLogSnapshots` | true | In snapshot chỉ báo của ưu tiên/phụ mỗi giờ |
 
-Input của GĐ2–5 (trọng số bias, ngưỡng điểm/RR theo tầng, top K, giới hạn tin/ngày, nhóm tương quan, phơi nhiễm tiền tệ, hệ số ATR cho Entry/SL, thời hạn setup, cooldown, đọc vùng vẽ tay) sẽ được thêm ở giai đoạn tương ứng.
+| Bias & ngưỡng | `InpWeightMN1/W1/D1/H4/H1` | 1/2/3/2/1 | Trọng số bias |
+| | `InpBiasMinConditions` | 3 | Số điều kiện (trên 4) để một khung là tăng/giảm |
+| | `InpMinScorePriority`, `InpMinRRPriority` | 5, 1.3 | Ngưỡng của tầng Ưu tiên |
+| | `InpMinScoreOther`, `InpMinRROther` | 7, 1.8 | Ngưỡng của tầng Phụ/Khám phá |
+| Setup | `InpEnablePullback`, `InpEnableBreakout` | true | Bật/tắt từng loại setup |
+| | `InpEntryZoneAtrH1` | 0.3 | Độ rộng vùng Entry |
+| | `InpConfluenceTolAtrH1` | 0.5 | Khoảng gom các yếu tố hội tụ |
+| | `InpMinConfluence` | 2 | Số loại yếu tố tối thiểu |
+| | `InpMaxEntryDistAtrH4` | 2.0 | Vùng Entry cách giá tối đa |
+| | `InpSwingStrengthH1/H4/D1`, `InpSwingLookback` | 3/2/2, 150 | Cách tìm swing |
+| | `InpSlBufferAtrH4`, `InpSlFallbackAtrH4` | 0.25, 1.0 | SL |
+| | `InpTpMinGapAtrH4` | 0.3 | TP phải cách Entry tối thiểu |
+| | `InpSetupExpiryHours`, `InpTriggeredMaxHours` | 24, 72 | Thời hạn |
+| | `InpCooldownMinutes` | 240 | Cooldown cho mỗi symbol |
+| Xếp hạng | `InpTopK` | 3 | Top K mỗi vòng quét (Phụ/Khám phá) |
+| | `InpMaxNewPerDay` | 10 | Số tin setup mới tối đa mỗi ngày (Phụ/Khám phá) |
+| | `InpCorrelationGroups` | KIM_LOAI:XAU,XAG,XPT,XPD; CRYPTO:BTC,ETH,...; CHI_SO_MY:US30,US500,USTEC,US100; DAU:UKOIL,USOIL,XBR,XTI | Nhóm tương quan |
+| | `InpMaxCurrencySameSide` | 2 | Phơi nhiễm Forex |
+| Tin tức | `InpNewsEnabled`, `InpNewsLookaheadMin`, `InpNewsCurrencies`, `InpNewsIncludeSymbolCcy` | true, 120, USD, false | |
+
+Input của GĐ4–5 (Telegram thật, lưu trạng thái, tóm tắt cuối ngày, đọc vùng vẽ tay) sẽ được thêm ở giai đoạn tương ứng.
 
 ---
 
-## 6. Logic phân tích (thiết kế cho Giai đoạn 2, để bạn duyệt trước)
+## 6. Logic phân tích (Giai đoạn 2)
 
-- **Bias từng khung** (+1/-1/0): +1 khi Close > SMA20 và Close > SMA50, SMA20 dốc lên và RSI > 50. -1 khi ngược lại hoàn toàn. Các trường hợp còn lại là 0 (trung tính). Dự kiến có input cho số điều kiện tối thiểu, ví dụ đạt 3/4 điều kiện là đủ.
-- **Bias tổng** = Σ trọng số × bias, với MN1 = 1, W1 = 2, D1 = 3, H4 = 2, H1 = 1 (tối đa 9). Khung nào thiếu dữ liệu thì tính 0.
-- **Ngưỡng theo tầng**: Ưu tiên |điểm| ≥ 5 và RR ≥ 1.3; Phụ/Khám phá |điểm| ≥ 7 và RR ≥ 1.8.
-- **Chờ hồi**: Entry là vùng hội tụ của ít nhất 2 yếu tố (SMA50 H4, SMA200/SMA50 H1, swing H1/H4, vùng vẽ tay). Độ rộng vùng = 0.3 × ATR(H1).
-- **Phá vỡ**: H4 đóng ngoài swing gần nhất, cùng hướng bias.
-- **SL** = ngoài swing + 0.25 × ATR(H4). **TP1/TP2** = mức hỗ trợ/kháng cự swing H4/D1 kế tiếp.
-- **Hủy kèo**: H4 đóng vượt SL thì báo `INVALIDATED`.
+### 6.1 Bias từng khung và bias tổng
+Với mỗi khung MN1, W1, D1, H4, H1, EA xét 4 điều kiện trên nến đã đóng gần nhất:
+1. Close so với SMA20
+2. Close so với SMA50
+3. Độ dốc SMA20: SMA20[1] so với SMA20[1+3]
+4. RSI14 so với 50
 
----
+Khung là **tăng (+1)** khi có ít nhất `InpBiasMinConditions = 3` điều kiện phía tăng, **giảm (-1)** khi có ít nhất 3 điều kiện phía giảm, còn lại là **0**. Điều kiện nào thiếu dữ liệu thì không tính cho phía nào.
+Bias tổng = Σ trọng số × bias (MN1 1, W1 2, D1 3, H4 2, H1 1; tối đa 9). Hướng setup theo dấu của bias tổng.
+
+| Tầng | |điểm| tối thiểu | RR TP1 tối thiểu |
+|---|---|---|
+| Ưu tiên | 5 | 1.3 |
+| Phụ / Khám phá | 7 | 1.8 |
+
+### 6.2 Setup chờ hồi (Buy/Sell Limit)
+- Các mức giá được xét: SMA50 H4, SMA200 H1, SMA50 H1, swing H1 (3 nến mỗi bên), swing H4 (2 nến mỗi bên), và vùng vẽ tay (GĐ5). Swing là fractal: đỉnh cao hơn N nến mỗi bên.
+- Bias giảm thì xét các mức **phía trên** giá; bias tăng thì xét các mức phía dưới. Mức phải cách giá không quá 2 × ATR(H4).
+- Đi từ mức gần giá nhất ra xa, EA gom các mức nằm trong khoảng 0.5 × ATR(H1). Cụm đầu tiên có **≥ 2 loại yếu tố khác nhau** được chọn (hai swing H1 chỉ tính là một loại).
+- Vùng Entry = trung bình cụm ± 0.15 × ATR(H1), tức rộng 0.3 × ATR(H1). Vùng không được chứa giá hiện tại.
+
+### 6.3 Setup phá vỡ
+- Chỉ xét khi có nến H4 mới đóng. Sell khi H4[1] đóng **dưới** đáy swing H4 gần nhất trong lúc H4[2] còn đóng trên đáy đó (tức phá vỡ vừa xảy ra). Buy thì ngược lại. Hướng phải cùng chiều bias.
+- Vùng Entry: từ giá đóng H4 đến mức bị phá, giới hạn tối đa 0.5 × ATR(H4), tối thiểu 0.3 × ATR(H1). Có thể vào theo giá thị trường hoặc chờ retest.
+- Nếu cả hai loại setup đều hợp lệ, EA chọn setup có RR cao hơn.
+
+### 6.4 SL / TP / RR
+- **SL** = swing gần nhất phía bảo vệ (H1/H4, trong phạm vi 3 × ATR(H4)) + 0.25 × ATR(H4). Không có swing thì SL = mép vùng Entry + 1.0 × ATR(H4).
+- **TP1/TP2** = các swing H4/D1 kế tiếp theo hướng lệnh, cách Entry ít nhất 0.3 × ATR(H4). TP2 phải cách TP1 ít nhất 0.25 × ATR(H4). Không có TP2 thì hiển thị một TP.
+- RR tính từ giữa vùng Entry. Setup bị loại nếu RR của TP1 nhỏ hơn ngưỡng của tầng.
+
+### 6.5 Vòng đời setup (mỗi chu kỳ 30 giây, chỉ đọc bid/ask và 1 nến H4)
+| Sự kiện | Kết quả | Tin |
+|---|---|---|
+| Giá vào vùng Entry | `đã vào vùng` | `GIÁ VÀO VÙNG ENTRY` |
+| H4 đóng vượt SL | `INVALIDATED` | `HỦY KÈO` |
+| Giá chạy tới TP1 trước khi vào vùng | `INVALIDATED` | `HỦY KÈO` (lỡ kèo) |
+| Giá chưa vào vùng sau 24h | `EXPIRED` | `HẾT HẠN` |
+| Đã vào vùng quá 72h | `EXPIRED` | `HẾT HẠN` |
+| Đã vào vùng và giá chạm TP2 (hoặc TP1 nếu không có TP2) | `DONE` | chỉ ghi log |
+
+Mỗi symbol chỉ có tối đa 1 setup mở. Sau khi setup đóng, symbol đó không có setup mới trong `InpCooldownMinutes` (240 phút).
+
+### 6.6 Ưu tiên, tương quan, phơi nhiễm, rủi ro
+- **Ưu tiên** được báo ngay khi phân tích xong, không bị giới hạn top K hay số tin/ngày.
+- **Phụ/Khám phá** được xếp hạng ở cuối vòng quét theo điểm chất lượng 0–100:
+  40 × |bias|/9 + 30 × min(RR, 4)/4 + 20 × min(số yếu tố hội tụ, 4)/4 + 10 × (1 − spread%/ngưỡng spread).
+  Tối đa **top 3 mỗi vòng** và **10 tin/ngày** (tính theo ngày GMT+7).
+- **Nhóm tương quan** (`InpCorrelationGroups`; symbol được xếp vào nhóm khi tên bắt đầu bằng mã trong nhóm):
+  - Phụ/Khám phá bị chặn nếu trong nhóm đã có một setup đang mở bất kỳ. Quy tắc này bao gồm cả "phụ chỉ báo khi ưu tiên cùng nhóm không có setup" và "mỗi nhóm chỉ giữ một setup". Trong cùng một vòng, ứng viên có điểm cao nhất được xét trước.
+  - Ưu tiên không bị chặn bởi setup cùng hướng. Nếu ngược hướng với một setup Phụ/Khám phá **chưa vào vùng**, setup đó bị hủy (`HỦY KÈO`, nhường chỗ). Nếu ngược hướng với một setup ưu tiên, hoặc với một setup đã vào vùng, thì setup ưu tiên mới không được báo.
+  - Symbol phụ không thuộc nhóm tương quan nào thì không bị ràng buộc với ưu tiên.
+- **Phơi nhiễm Forex**: mỗi setup được tách thành vị thế mua/bán từng đồng tiền (Sell EURUSD = bán EUR, mua USD). Setup mới bị chặn nếu làm một đồng tiền có quá 2 setup cùng phía.
+- **Rủi ro**:
+  - Lot = rủi ro 1.5% chia cho (khoảng cách SL × tick value), làm tròn xuống theo volume step.
+  - Nếu lot tối thiểu đã vượt 1.5%: dùng lot tối thiểu và gắn nhãn `CẢNH BÁO RỦI RO`.
+  - Nếu lot tối thiểu vượt 4% (ngưỡng cứng): không báo, chỉ ghi log.
+  - Nếu tổng rủi ro của các setup đang mở cộng thêm setup mới vượt 5%: tin được gắn nhãn **"ĐANG CHỜ, VƯỢT NGƯỠNG RỦI RO"**, setup không được tính vào tổng rủi ro và không được theo dõi giá.
+- **Tin tức**: nếu có tin USD mức cao trong 2 giờ tới (lịch kinh tế MT5), tin setup có thêm dòng ghi chú. Nếu không có dữ liệu lịch thì bỏ qua.
+
+### 6.7 Mẫu tin
+```
+[XAUUSD] SETUP SELL (chờ hồi) - Nhóm: Ưu tiên
+Giá hiện tại: 4150.20 | Thời gian: 14/10 13:55 (GMT+7)
+Bias: MN1 0 | W1 0 | D1 giảm | H4 giảm | H1 giảm  (điểm 6/9)
+Entry (Sell Limit): 4172.00 - 4178.00
+SL: 4196.00 (cách ~21.00)
+TP1: 4135.00 (RR 1:1.7) | TP2: 4100.00 (RR 1:3.2)
+Lot gợi ý: 0.01 (rủi ro ≈ $21 = 2.1%)
+Hủy kèo: H4 đóng trên 4196.00 | Hết hạn: 24h
+Lý do: hội tụ SMA50 H4 + swing H1
+Tổng rủi ro các setup đang mở: $39 (3.9%)
+Chỉ là tín hiệu tham khảo, không phải lời khuyên đầu tư.
+```
 
 ## 7. Giao diện dữ liệu cho cầu nối Python + Claude API (chỉ thiết kế, chưa cài đặt)
 

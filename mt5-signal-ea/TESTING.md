@@ -61,8 +61,66 @@ Chạy EA ≥ 24 giờ trên VPS với `ALL_BROKER_SYMBOLS`:
 - ☐ Ngắt mạng VPS khoảng 1 phút: bảng hiện `MẤT KẾT NỐI ...`, có mạng lại thì EA tự quét tiếp.
 - ☐ Nhập input sai (ví dụ `InpTimerSeconds=1`): EA từ chối khởi động với lỗi rõ ràng (INIT_PARAMETERS_INCORRECT).
 
-## Giai đoạn 2–6 (sẽ chi tiết hóa khi giao)
-- GĐ2: kiểm tra bias từng khung bằng tay trên chart; setup chờ hồi/phá vỡ; RR; hai tầng ngưỡng; nhóm tương quan; phơi nhiễm tiền tệ; top K; DryRun in đúng mẫu `SETUP MỚI` cho BTCUSD/XAUUSD (nghiệm thu 2).
-- GĐ3: `CẢNH BÁO RỦI RO`, tổng rủi ro, "đang chờ, vượt ngưỡng rủi ro".
-- GĐ4: gửi tin thật, lỗi 4060, retry, tự tách tin, giới hạn tin/ngày; khởi động lại EA không báo trùng setup (nghiệm thu 3); chạy DryRun cả ngày không gây bão tin (nghiệm thu 8).
+## Giai đoạn 2: bias, setup, SL/TP, quy tắc ưu tiên/tương quan, rủi ro
+
+Input chung: `InpDryRun=true`, `InpLogSnapshots=true`. Nên dùng `InpLogLevel=DEBUG` trong lúc kiểm tra.
+
+### T2.1 Biên dịch
+- ☐ 0 errors. Gửi lại `SignalEA.log` nếu có lỗi hoặc cảnh báo.
+- ☐ Tin khởi động có thêm dòng `Ngưỡng: Ưu tiên điểm >= 5 ...` và `Rủi ro: 1.5%/setup ...`. Log có dòng `Nhóm tương quan: KIM_LOAI: ... | CRYPTO: ...`.
+
+### T2.2 Bias từng khung (quy tắc 3/4)
+- ☐ Với XAUUSD và BTCUSD, mỗi giờ log có `[SNAPSHOT] Bias: MN1 .. | W1 .. | D1 .. | H4 .. | H1 ..  (điểm x/9)` và `[SNAPSHOT] Phân tích: ...`.
+- ☐ Kiểm tra tay 1–2 khung trên chart (SMA20, SMA50, RSI14, nến đã đóng gần nhất):
+  - Có ít nhất 3 trong 4 điều kiện Close > SMA20, Close > SMA50, SMA20[1] > SMA20[4], RSI > 50 thì khung là "tăng".
+  - Có ít nhất 3 điều kiện ngược lại thì là "giảm".
+  - Còn lại là "0".
+- ☐ Bảng trạng thái hiện `bias +x` hoặc `bias -x` cho ưu tiên/phụ.
+
+### T2.3 Setup chờ hồi
+- ☐ Khi có setup, log có `[XAUUSD] SETUP MỚI SELL chờ hồi | điểm 6/9 | RR 1.70 | ...`, kèm tin `[DRYRUN]` theo đúng mẫu ở README mục 6.7.
+- ☐ Đối chiếu trên chart:
+  - Vùng Entry nằm phía trên giá (Sell) hoặc phía dưới giá (Buy), cách giá không quá 2 × ATR(H4).
+  - Dòng "Lý do" nêu ít nhất 2 yếu tố, và các yếu tố đó (SMA/swing) thực sự nằm gần vùng.
+  - SL nằm ngoài swing gần nhất. TP1/TP2 trùng với đỉnh/đáy H4 hoặc D1.
+- ☐ Khi không có setup, dòng `Phân tích:` nêu rõ lý do, ví dụ `bias 3/9 chưa đạt ngưỡng 5`, `RR TP1 1.10 < 1.30`, `không có vùng hội tụ >= 2 yếu tố`.
+
+### T2.4 Setup phá vỡ
+- ☐ Chỉ xuất hiện sau khi một nến H4 vừa đóng phá đỉnh/đáy swing H4, và cùng hướng bias. Lý do có dạng `H4 đóng 4120.5 dưới đáy swing H4 4125.0`.
+- ☐ Kiểm tra nhanh: tạm đặt `InpEnablePullback=false` để chỉ còn setup phá vỡ.
+
+### T2.5 Hai tầng ngưỡng, top K, giới hạn ngày
+- ☐ Setup Phụ/Khám phá chỉ xuất hiện khi |điểm| ≥ 7 và RR ≥ 1.8.
+- ☐ Cuối vòng quét giờ: log có `Hoàn tất vòng quét ...`, sau đó là `[TỔNG HỢP] n setup mới` (khi có từ 2 setup) hoặc một tin chi tiết (khi chỉ có 1 setup).
+- ☐ Mỗi vòng có tối đa 3 setup Phụ/Khám phá. Các ứng viên còn lại có log `ứng viên bỏ qua: ngoài top 3`.
+- ☐ Thử giới hạn ngày: đặt `InpMaxNewPerDay=1`, tạm hạ `InpMinScoreOther=5` và `InpMinRROther=1.3` để có nhiều ứng viên. Từ tin thứ 2 trở đi phải có log `đã đạt giới hạn 1 tin/ngày`, còn setup ưu tiên vẫn được báo. Trả lại giá trị cũ sau khi kiểm tra.
+
+### T2.6 Tương quan và phơi nhiễm
+- ☐ Khi XAUUSD có setup đang mở, XAGUSD (phụ) không được báo: log `cùng nhóm KIM_LOAI với setup ưu tiên XAUUSD đang hoạt động`.
+- ☐ Hai symbol khám phá cùng nhóm (ví dụ US30 và US500): chỉ symbol đầu tiên được báo, symbol sau có log `nhóm CHI_SO_MY đã có setup ...`.
+- ☐ Forex: tạm hạ ngưỡng để có nhiều setup cùng bán USD. Từ setup thứ 3 trở đi có log `phơi nhiễm: đã có 2 setup MUA/BÁN USD`.
+
+### T2.7 Rủi ro
+- ☐ `Lot gợi ý` khớp với cách tính tay: lot = 1.5% số dư / (khoảng cách SL / tick size × tick value), làm tròn xuống.
+- ☐ Symbol mà lot tối thiểu đã vượt 1.5%: tin có nhãn `CẢNH BÁO RỦI RO` và dòng `Lot tối thiểu 0.01 rủi ro ≈ $X (Y%) vượt ngưỡng 1.5%`.
+- ☐ Lot tối thiểu vượt 4%: không có tin, log có `setup bị loại: lot tối thiểu rủi ro ≈ ... > ngưỡng cứng 4.0%`.
+- ☐ Tạm đặt `InpMaxTotalRiskPct=2`. Từ setup thứ 2 trở đi, tin có nhãn `ĐANG CHỜ, VƯỢT NGƯỠNG RỦI RO` và setup đó không được cộng vào dòng "Tổng rủi ro".
+
+### T2.8 Vòng đời
+- ☐ Giá chạm vùng Entry: có tin `GIÁ VÀO VÙNG ENTRY`, bảng trạng thái đổi sang `đã vào vùng`.
+- ☐ H4 đóng vượt SL: có tin `HỦY KÈO` với lý do `H4 đóng X trên mức hủy Y`.
+- ☐ Sau 24h giá vẫn chưa vào vùng: có tin `HẾT HẠN`.
+- ☐ Trong 240 phút sau khi setup đóng, symbol đó không có setup mới (log debug `cooldown`).
+- ☐ Một symbol chỉ có tối đa 1 setup mở. Phân tích các giờ sau không báo lại setup đó (chống spam).
+
+### T2.9 Tin tức
+- ☐ Trước tin USD mức cao (NFP, CPI, FOMC) khoảng 2 giờ, tin setup có dòng `Lưu ý tin mức cao trong 2 giờ tới (GMT+7): USD ... lúc HH:MM`.
+- ☐ Trong Strategy Tester (không có lịch): không có lỗi nào.
+
+### T2.10 Hiệu năng
+- ☐ Chạy cả ngày với `ALL_BROKER_SYMBOLS`: thời gian chu kỳ max vẫn chỉ vài giây, RAM không tăng dần.
+
+## Giai đoạn 3–6 (sẽ chi tiết hóa khi giao)
+- GĐ3: đối chiếu số liệu rủi ro thật trên Exness, tinh chỉnh.
+- GĐ4: gửi tin thật, lỗi 4060, retry, tự tách tin; khởi động lại EA không báo trùng setup (nghiệm thu 3); DryRun cả ngày không gây bão tin (nghiệm thu 8); tóm tắt cuối ngày.
 - GĐ5: vẽ rectangle/trendline trên chart và kiểm tra yếu tố "vùng vẽ tay" có trong lý do của setup.

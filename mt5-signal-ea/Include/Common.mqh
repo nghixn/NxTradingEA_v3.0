@@ -6,8 +6,8 @@
 #define SIGNALEA_COMMON_MQH
 
 #define EA_NAME       "SignalEA"
-#define EA_VERSION    "0.1.0"
-#define EA_STAGE      "Giai đoạn 1"
+#define EA_VERSION    "0.2.0"
+#define EA_STAGE      "Giai đoạn 2"
 #define EA_FILES_DIR  "SignalEA"
 
 //--- Chế độ vũ trụ quét
@@ -230,6 +230,11 @@ datetime HourKey(const datetime t)
   {
    long v=(long)t;
    return (datetime)(v-(v%3600));
+  }
+
+int IntAbs(const int v)
+  {
+   return (v<0) ? -v : v;
   }
 
 //+------------------------------------------------------------------+

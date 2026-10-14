@@ -41,6 +41,8 @@ struct SymbolRec
    double            rsiH1;
    double            closeH1;
    double            minLotRiskPct;
+   int               biasScore;     // điểm bias tổng lần phân tích gần nhất
+   datetime          lastH4Seen;    // nến H4 đã đóng đã xét phá vỡ
   };
 
 SymbolRec g_uni[];
@@ -91,6 +93,8 @@ void UniInitRec(SymbolRec &r,const string name,const string base,const ENUM_ASSE
    r.rsiH1=EMPTY_VALUE;
    r.closeH1=EMPTY_VALUE;
    r.minLotRiskPct=EMPTY_VALUE;
+   r.biasScore=0;
+   r.lastH4Seen=0;
   }
 
 // Copy từng trường (tránh phụ thuộc vào phép gán struct có string)
@@ -112,6 +116,8 @@ void UniCopyRec(SymbolRec &d,const SymbolRec &s)
    d.rsiH1=s.rsiH1;
    d.closeH1=s.closeH1;
    d.minLotRiskPct=s.minLotRiskPct;
+   d.biasScore=s.biasScore;
+   d.lastH4Seen=s.lastH4Seen;
   }
 
 // Chỉ copy phần runtime (khi dựng lại universe)
@@ -129,6 +135,8 @@ void UniCopyRuntime(SymbolRec &d,const SymbolRec &s)
    d.rsiH1=s.rsiH1;
    d.closeH1=s.closeH1;
    d.minLotRiskPct=s.minLotRiskPct;
+   d.biasScore=s.biasScore;
+   d.lastH4Seen=s.lastH4Seen;
   }
 
 int UniFindIn(const SymbolRec &arr[],const string name)
