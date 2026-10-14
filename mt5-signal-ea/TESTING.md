@@ -251,3 +251,30 @@ Thông tin nên gửi lại cho tôi:
 
 ### T7.5 Phân tích
 - ☐ Sau vài tuần: `python tools\analyze_journal.py journal_<login>.csv` in ra số liệu tổng, ba kịch bản và các bảng tách nhóm. Nếu chưa đủ 30 kèo khớp, script phải in cảnh báo mẫu nhỏ.
+
+## Giai đoạn 8: backtest Python
+
+### T8.1 Test tự động
+- ☐ `cd backtest` rồi `python -m unittest -v test_backtest.py` → 16 test OK. Các test gồm:
+  - chỉ báo so với cách tính thủ công;
+  - swing so với bản chép nguyên vòng lặp `AnaSwings`;
+  - bias 3/4, TP/SL;
+  - mô phỏng lệnh: SL trước, cùng nến, TP1 rồi hòa vốn, TP2, bên Buy;
+  - tương quan, phơi nhiễm;
+  - chạy đầu-cuối.
+
+  (Đã chạy đạt trên môi trường phát triển.)
+- ☐ `python make_sample_data.py --out sample_data` rồi `python run_backtest.py --data-dir sample_data`: chạy hết, in bộ đếm và báo cáo.
+
+### T8.2 Xuất dữ liệu thật
+- ☐ Biên dịch `Scripts/ExportHistory.mq5`, chạy trên một chart. Log có dòng `[EXPORT] XAUUSD: MN1=.. W1=.. D1=.. H4=.. H1=.. M1=..` cho mỗi symbol.
+- ☐ D1 ≥ 250 nến, H1 đủ cho số năm đã chọn. Nếu thiếu, tăng "Max bars in chart" rồi chạy lại.
+
+### T8.3 Backtest dữ liệu thật
+- ☐ `python run_backtest.py --data-dir <history>` chạy xong không lỗi. Thời gian chạy cho vài symbol × 3 năm khoảng vài chục giây đến vài phút.
+- ☐ Đối chiếu tay 2–3 kèo trong `backtest_trades.csv` trên chart MT5: vào đúng giờ `created` (GMT+7), mở H4/H1 kiểm tra bias, vùng Entry, SL, TP có hợp lý; mở M1 tại `fill_time` kiểm tra khớp và SL/TP chạm trước.
+- ☐ Khi EA đã chạy thật một thời gian: chạy backtest đúng khoảng thời gian đó và so với `journal_<login>.csv`. Phần lớn setup phải trùng (cùng symbol, hướng, giờ tạo xấp xỉ). Gửi tôi các kèo chỉ có ở một bên để tìm chỗ lệch.
+
+### T8.4 Đánh giá
+- ☐ Chạy cấu hình mặc định trên toàn bộ dữ liệu và ghi lại kết quả gốc.
+- ☐ Chia dữ liệu: năm cuối chỉ chạy một lần sau khi đã chọn xong cấu hình (`backtest/README.md` mục 4).
