@@ -65,6 +65,9 @@ struct Setup
 
 // Khai báo trước (định nghĩa trong AiExport.mqh): xuất JSON cho cầu nối AI
 void AiExportEvent(const Setup &s,const string ev);
+// Khai báo trước (định nghĩa trong Journal.mqh): nhật ký kết quả tín hiệu
+void   JnlOnNewSetup(const Setup &s,const bool pending);
+string JnlSummaryText();
 
 Setup  g_setups[];      // setup đang mở + đã đóng gần đây (cooldown)
 Setup  g_cands[];       // ứng viên nhóm phụ/khám phá chờ xếp hạng cuối vòng quét
@@ -657,6 +660,8 @@ int SigAdmit(Setup &c,const bool sendDetail,bool &inZone,string &why)
                         c.riskWarn ? " | lot tối thiểu vượt mức -> CẢNH BÁO RỦI RO" : ""));
    if(sendDetail)
       NotifySend(SigMsgNew(g_setups[n],pending,inZone));
+   // nhật ký ghi cả setup chờ rủi ro (đánh dấu riêng, không tính thống kê chính)
+   JnlOnNewSetup(g_setups[n],pending);
    // setup "đang chờ, vượt ngưỡng rủi ro" không phải tín hiệu -> không gửi cho AI
    if(!pending)
       AiExportEvent(g_setups[n],"NEW_SETUP");
@@ -952,6 +957,9 @@ void SigDailySummaryCheck(const datetime now)
                       SigP(g_setups[i],g_setups[i].sl),SigP(g_setups[i],g_setups[i].tp1));
      }
    m+=SigTotalRiskText()+"\n";
+   string jt=JnlSummaryText();
+   if(jt!="")
+      m+=jt+"\n";
    m+="Số dư: "+FmtMoney(RiskBalance())+" | Telegram: "+TgStatusText()+"\n";
    m+="Chỉ là tín hiệu tham khảo, không phải lời khuyên đầu tư.";
    NotifySend(m);

@@ -4,7 +4,7 @@
 //| Không dùng DLL. Không có hàm giao dịch nào trong mã nguồn.       |
 //+------------------------------------------------------------------+
 #property copyright   "NxTrading"
-#property version     "0.91"
+#property version     "0.92"
 #property description "Quét nhiều symbol, phân tích đa khung, gửi tín hiệu Telegram. Không giao dịch."
 
 #include "Include\Common.mqh"
@@ -87,6 +87,10 @@ input bool               InpLogSnapshots           = true;               // In s
 input group "=== 13. Cầu nối AI (Python + Claude API) ==="
 input bool               InpAiExport               = false;              // Xuất JSON setup mới / giá vào vùng Entry cho script Python
 
+input group "=== 14. Nhật ký kết quả tín hiệu ==="
+input bool               InpJournalEnabled         = true;               // Mô phỏng kết quả từng setup trên nến M1, ghi CSV
+input int                InpJournalMaxHoldHours    = 120;                // Thời gian giữ lệnh tối đa khi mô phỏng (giờ)
+
 input group "=== 9. Bias & ngưỡng theo tầng ==="
 input int                InpWeightMN1              = 1;                  // Trọng số MN1
 input int                InpWeightW1               = 2;                  // Trọng số W1
@@ -138,6 +142,7 @@ input bool               InpNewsIncludeSymbolCcy   = false;              // Thê
 #include "Include\Signals.mqh"
 #include "Include\State.mqh"
 #include "Include\AiExport.mqh"
+#include "Include\Journal.mqh"
 #include "Include\SelfTest.mqh"
 
 //+------------------------------------------------------------------+
@@ -178,6 +183,8 @@ bool ValidateInputs()
      { LogE("InpMaxMarketWatch phải >= 5."); ok=false; }
    if(InpTgMaxChars<200 || InpTgMaxChars>4096)
      { LogE("InpTgMaxChars phải trong [200..4096]."); ok=false; }
+   if(InpJournalMaxHoldHours<1)
+     { LogE("InpJournalMaxHoldHours phải >= 1."); ok=false; }
    if(InpTgMinIntervalMs<500 || InpTgMaxRetries<0 || InpTgMaxRetries>10)
      { LogE("InpTgMinIntervalMs phải >= 500, InpTgMaxRetries trong [0..10]."); ok=false; }
    if(InpDailySummaryHour<0 || InpDailySummaryHour>23)
@@ -303,7 +310,7 @@ void FinishSymbol(const int idx,const datetime hk,const int code,const string te
    UniSetStatus(idx,code,text);
    g_uni[idx].lastHourKey=hk;
    g_uni[idx].deferCount=0;
-   if(!SigHasOpen(g_uni[idx].name) && !SigHasCandidate(g_uni[idx].name))
+   if(!SigHasOpen(g_uni[idx].name) && !SigHasCandidate(g_uni[idx].name) && !JnlHasOpen(g_uni[idx].name))
       UniReleaseIfOwned(idx);
   }
 
@@ -631,6 +638,13 @@ void UpdatePanel(const string note)
                       FmtVal(g_uni[i].rsiH1,1),FmtVal(g_uni[i].spreadAtrPct,1),FmtVal(g_uni[i].minLotRiskPct,2));
      }
    s+=SigPanelText();
+   if(InpJournalEnabled)
+     {
+      int jw=0,jt=0;
+      JnlOpenCount(jw,jt);
+      s+=StringFormat("Nhật ký: %d kèo đã đóng, khớp %d, A tổng %+.2fR | đang theo dõi %d (chờ %d, chạy %d)\n",
+                      g_jsClosed,g_jsFilled,g_jsSumA,jw+jt,jw,jt);
+     }
    // Comment() có giới hạn độ dài -> cắt bớt để không lỗi hiển thị
    if(StringLen(s)>2000)
       s=StringSubstr(s,0,1990)+"\n...";
@@ -692,6 +706,7 @@ int OnInit()
    //--- khôi phục setup đã báo -> khởi động lại không báo trùng
    StateLoad();
    StateEnsureSymbolsSelected();
+   JnlLoad();
    SigRollDay();
 
    NotifySend(BuildStartupMessage());
@@ -753,6 +768,7 @@ void ScanCycle()
    NewsRefresh(now);
    SigRollDay();
    SigMonitor(now);
+   JnlUpdate(now);
 
    datetime hk=HourKey(now);
    if(hk!=g_curHourKey)
@@ -775,6 +791,8 @@ void ScanCycle()
    SigDailySummaryCheck(now);
    if(g_stateDirty)
       StateSave();
+   if(g_jnlDirty)
+      JnlSave();
 
    g_lastCycleMs=GetTickCount64()-t0;
    if(g_lastCycleMs>g_maxCycleMs)
@@ -799,6 +817,7 @@ void OnDeinit(const int reason)
   {
    EventKillTimer();
    StateSave();
+   JnlSave();
    TgDeinit();
    SelfTestDeinit();
    IndReleaseAllHandles();

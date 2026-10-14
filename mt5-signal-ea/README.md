@@ -3,7 +3,7 @@
 > **EA chỉ báo tín hiệu. Tuyệt đối không đặt, sửa hay đóng lệnh.** Mã nguồn không gọi `OrderSend`, `CTrade` hay bất kỳ hàm giao dịch nào, và không dùng DLL.
 > Tín hiệu chỉ để tham khảo, không phải lời khuyên đầu tư.
 
-Phiên bản hiện tại: **0.9.1**, ứng viên phát hành. Đã đủ các giai đoạn 1–5, cộng thêm cầu nối Python gọi Claude API (giai đoạn 6, thư mục `ai-bridge/`). **Mã chưa được biên dịch bằng MetaEditor**: sẽ lên 1.0.0 sau khi biên dịch sạch và đạt các mục nghiệm thu ở mục 9.
+Phiên bản hiện tại: **0.9.2**, ứng viên phát hành. Đã đủ các giai đoạn 1–5, cộng thêm cầu nối Python gọi Claude API (giai đoạn 6, thư mục `ai-bridge/`) và nhật ký kết quả tín hiệu (giai đoạn 7, mục 10). **Mã chưa được biên dịch bằng MetaEditor**: sẽ lên 1.0.0 sau khi biên dịch sạch và đạt các mục nghiệm thu ở mục 9.
 
 ---
 
@@ -18,7 +18,8 @@ Phiên bản hiện tại: **0.9.1**, ứng viên phát hành. Đã đủ các g
 | 3 | Quản lý vốn: lot theo SL thật, `CẢNH BÁO RỦI RO`, tổng rủi ro, "đang chờ, vượt ngưỡng rủi ro" | **Đã giao** (phần tính toán làm sớm ở GĐ2; GĐ3 thêm kiểm chéo tick value và log diễn giải) |
 | 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | Đã giao |
 | 5 | Rà soát toàn bộ mã nguồn, hoàn thiện README/TESTING, bảng đối chiếu nghiệm thu (mục 9) | Đã giao |
-| 6 | Cầu nối Python gọi Claude API: EA xuất JSON → script gọi Claude → gửi nhận định lên Telegram, in token, giới hạn lần gọi/ngày | **Đã giao** |
+| 6 | Cầu nối Python gọi Claude API: EA xuất JSON → script gọi Claude → gửi nhận định lên Telegram, in token, giới hạn lần gọi/ngày | Đã giao |
+| 7 | Nhật ký kết quả tín hiệu: mô phỏng từng setup trên nến M1, ghi CSV, thống kê trong tóm tắt ngày, script phân tích | **Đã giao** |
 
 ### Module
 
@@ -32,6 +33,8 @@ mt5-signal-ea/
   Include/Telegram.mqh     WebRequest sendMessage, tách tin, hàng đợi, retry, xử lý 429/4014/4060, DryRun
   Include/SelfTest.mqh     Đối chiếu chỉ báo tự tính với iMA/iBands/iRSI/iATR + bảng tick value (thêm)
   Include/AiExport.mqh     Xuất JSON sự kiện cho cầu nối AI (thêm)
+  Include/Journal.mqh      Nhật ký kết quả tín hiệu: mô phỏng trên M1, CSV, thống kê (thêm)
+  tools/analyze_journal.py Phân tích file nhật ký CSV + test (thêm)
   ai-bridge/               Script Python gọi Claude API + test + README riêng (thêm)
   Include/Analysis.mqh     Chấm điểm bias, swing, vùng Entry hội tụ, phá vỡ H4, SL/TP/RR
   Include/Signals.mqh      Vòng đời setup, ưu tiên/tương quan/phơi nhiễm, tổng rủi ro, top K, nội dung tin (thêm)
@@ -181,6 +184,8 @@ Nếu chưa làm bước này, WebRequest sẽ báo lỗi (4014/4060) và EA in 
 | | `InpSelfTestSymbols` | BTCUSD,XAUUSD,EURUSD,USDJPY,US30 | Ít nhất 3 nhóm tài sản |
 | | `InpLogSnapshots` | true | In snapshot chỉ báo của ưu tiên/phụ mỗi giờ |
 | Cầu nối AI | `InpAiExport` | false | Xuất JSON khi có SETUP MỚI / GIÁ VÀO VÙNG ENTRY cho script `ai-bridge` |
+| Nhật ký | `InpJournalEnabled` | true | Mô phỏng kết quả từng setup, ghi `journal_<login>.csv` |
+| | `InpJournalMaxHoldHours` | 120 | Giữ lệnh mô phỏng tối đa bao nhiêu giờ, quá thì chốt theo giá đóng cửa |
 
 | Bias & ngưỡng | `InpWeightMN1/W1/D1/H4/H1` | 1/2/3/2/1 | Trọng số bias |
 | | `InpBiasMinConditions` | 3 | Số điều kiện (trên 4) để một khung là tăng/giảm |
@@ -342,3 +347,64 @@ Những điểm cần lưu ý (giới hạn đã biết):
 - **RSI tự tính** dùng khoảng 320 nến, nên có thể lệch iRSI ở chữ số thập phân thứ 3–4 (dung sai self-test 0.05).
 - **Hàng đợi Telegram** không được lưu qua lần khởi động lại; tin chưa gửi được in ra log.
 - **Tin tức** phụ thuộc lịch kinh tế của MT5; không có dữ liệu thì bỏ qua, không báo lỗi.
+
+---
+
+## 10. Nhật ký kết quả tín hiệu (giai đoạn 7)
+
+Mục đích: trả lời câu hỏi **"tín hiệu của EA có lãi không?"** bằng số liệu, thay vì cảm nhận.
+
+### Cách mô phỏng
+- Mỗi setup được báo đều có một bản ghi trong nhật ký. Setup "đang chờ, vượt ngưỡng rủi ro" cũng được ghi, nhưng đánh dấu `pending_risk=1` và **không** tính vào thống kê chính.
+- Mỗi chu kỳ quét, EA đọc các nến **M1** mới đóng của symbol (giá bid) và cộng spread lúc báo tín hiệu cho các mức chạy theo giá ask.
+- **Khớp lệnh** khi giá chạm `entry_ref`, tức giữa vùng Entry, cũng là mức dùng để tính RR và lot. Chỉ chạm mép vùng thì chưa tính là khớp.
+- **Quy tắc thận trọng:**
+  - Trong nến khớp, chỉ xét SL; TP được xét từ nến kế tiếp.
+  - SL và TP cùng nằm trong một nến M1 thì tính SL chạm trước.
+- **Không khớp:** setup bị hủy, hết hạn hoặc lỡ kèo trước khi giá tới `entry_ref` → kết quả `NOT_FILLED`.
+- **Ba kịch bản thoát lệnh**, tính theo R (1R = khoảng cách Entry–SL):
+
+| Kịch bản | Cách thoát |
+|---|---|
+| A | Chốt toàn bộ ở TP1 |
+| B | Chốt toàn bộ ở TP2 (không có TP2 thì dùng TP1) |
+| C | Chốt 50% ở TP1, 50% còn lại dời SL về hòa vốn và chờ TP2 |
+
+- Giữ quá `InpJournalMaxHoldHours` (120 giờ) thì chốt theo giá đóng cửa, kết quả `TIMEOUT`.
+- Chưa tính trượt giá hay commission (tài khoản Pro của Exness không có commission).
+- Bản ghi đang theo dõi được lưu vào `journal_<login>_open.txt`, nên khởi động lại EA vẫn tiếp tục. Khi EA chạy lại, nó đọc bù các nến M1 bị bỏ lỡ, tối đa khoảng 14 ngày.
+
+### File `MQL5/Files/SignalEA/journal_<login>.csv`
+Mỗi kèo đóng được ghi một dòng. File dùng UTF-8, phân cách `;`, mở được bằng Excel. Thời gian theo GMT+7.
+
+| Cột | Ý nghĩa |
+|---|---|
+| `id`, `symbol`, `tier`, `group`, `side`, `type`, `score` | Thông tin setup |
+| `pending_risk` | 1 = setup "đang chờ, vượt ngưỡng rủi ro" |
+| `entry`, `sl`, `tp1`, `tp2`, `rr1`, `rr2`, `spread`, `lot`, `risk_money`, `risk_pct`, `risk_warning` | Thông số lúc báo |
+| `filled`, `fill_time`, `minutes_to_fill` | Có khớp không, khớp lúc nào |
+| `outcome` | `SL`, `TP1` (khi không có TP2), `TP1_SL` (chạm TP1 rồi quay về SL), `TP2`, `TIMEOUT`, `NOT_FILLED` |
+| `r_a`, `r_b`, `r_c` | Kết quả theo R của kịch bản A, B, C |
+| `mfe_r`, `mae_r` | Mức đi thuận / đi ngược lớn nhất, tính theo R |
+| `hold_hours`, `close_time` | Thời gian giữ lệnh, lúc đóng |
+| `money_a` | Lãi/lỗ lý thuyết của kịch bản A theo lot gợi ý |
+
+### Xem kết quả
+- **Tóm tắt cuối ngày** trên Telegram có thêm thống kê tích lũy: số kèo, tỷ lệ khớp, tỷ lệ thắng và tổng R của từng kịch bản.
+- **Bảng trạng thái** trên chart có một dòng tóm tắt nhật ký.
+- **Phân tích chi tiết** bằng script Python (chỉ dùng thư viện chuẩn):
+  ```
+  python tools\analyze_journal.py "...\MQL5\Files\SignalEA\journal_<login>.csv"
+  python tools\analyze_journal.py journal.csv --scenario C
+  ```
+  Script in ra:
+  - tỷ lệ thắng, kỳ vọng trung bình theo R kèm khoảng tin cậy 95%;
+  - profit factor, chuỗi thua dài nhất, drawdown lớn nhất (theo R);
+  - bảng tách theo tầng, nhóm tài sản, loại setup, hướng, điểm bias, symbol.
+
+### Cách đọc kết quả
+- **Cần ít nhất 30 kèo khớp**, tốt hơn là 100, trước khi kết luận. Với ít kèo, khoảng tin cậy rất rộng và kết quả tốt có thể chỉ là may mắn.
+- **Kỳ vọng trung bình > 0 và cận dưới khoảng tin cậy 95% > 0** thì mới có dấu hiệu có lợi thế thật.
+- **So sánh A/B/C** để chọn cách chốt lời phù hợp với các setup này.
+- **Xem bảng tách nhóm** để tìm nhóm/loại setup kéo kết quả xuống, rồi tắt hoặc sửa nhóm đó. Mỗi lần chỉ thay đổi một thứ, tránh tối ưu quá khớp với dữ liệu quá khứ.
+- **Đây là mô phỏng**, không phải lệnh thật. Kết quả thật còn phụ thuộc trượt giá và việc bạn có vào lệnh đúng như tín hiệu hay không.

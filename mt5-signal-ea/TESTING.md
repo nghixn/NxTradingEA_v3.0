@@ -227,3 +227,27 @@ Thông tin nên gửi lại cho tôi:
 - ☐ `--max-calls 1`, đặt 2 file vào hàng đợi: file thứ 2 vào `skipped/`, Telegram nhận đúng 1 tin báo đạt giới hạn.
 - ☐ Sang ngày mới (GMT+7): bộ đếm trong `ai_bridge_state.json` về 0.
 - ☐ Sau vài ngày, đối chiếu tổng chi phí ước tính trong log với số liệu trên console.anthropic.com.
+
+## Giai đoạn 7: nhật ký kết quả tín hiệu
+
+### T7.1 Test tự động script phân tích
+- ☐ `cd tools` rồi `python -m unittest -v test_analyze_journal.py` → 6 test OK. (Đã chạy đạt trên môi trường phát triển.)
+
+### T7.2 Ghi nhật ký trong EA
+- ☐ Khi khởi động, log có `[JOURNAL] Nạp n kèo đang theo dõi; tích lũy m kèo đã đóng.`
+- ☐ Bảng trạng thái có dòng `Nhật ký: ... đang theo dõi x (chờ a, chạy b)`.
+- ☐ Sau khi một setup đóng (hủy, hết hạn, chạm SL/TP): log có `[JOURNAL] <id>: <outcome> (A ...R | B ...R | C ...R)`, và file `MQL5/Files/SignalEA/journal_<login>.csv` có thêm 1 dòng. Mở bằng Excel thấy đúng cột, tiếng Việt hiển thị đúng.
+
+### T7.3 Đối chiếu tay 2–3 kèo (quan trọng)
+- ☐ Với một kèo `SL` hoặc `TP1`/`TP2`, mở chart M1 của symbol và tìm đúng thời điểm `fill_time`:
+  - giá có chạm `entry` không;
+  - sau đó SL hay TP1 bị chạm trước;
+  - `r_a`/`r_b`/`r_c` có đúng với `rr1`/`rr2` hoặc −1 không.
+- ☐ Với một kèo `NOT_FILLED`: giá chưa từng chạm `entry` trước khi setup đóng.
+- ☐ Kèo `TP1_SL` ở kịch bản C: `r_c` = 0.5 × rr1 (nửa sau hòa vốn).
+
+### T7.4 Khởi động lại
+- ☐ Gỡ EA khi đang có kèo "đang chạy", chờ 30–60 phút rồi gắn lại: kèo vẫn được theo dõi tiếp (EA đọc bù nến M1 đã bỏ lỡ), không bị ghi trùng vào CSV.
+
+### T7.5 Phân tích
+- ☐ Sau vài tuần: `python tools\analyze_journal.py journal_<login>.csv` in ra số liệu tổng, ba kịch bản và các bảng tách nhóm. Nếu chưa đủ 30 kèo khớp, script phải in cảnh báo mẫu nhỏ.
