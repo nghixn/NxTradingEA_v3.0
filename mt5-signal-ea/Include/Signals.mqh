@@ -67,6 +67,7 @@ struct Setup
 void AiExportEvent(const Setup &s,const string ev);
 // Khai báo trước (định nghĩa trong Journal.mqh): nhật ký kết quả tín hiệu
 void   JnlOnNewSetup(const Setup &s,const bool pending);
+bool   JnlHasOpen(const string sym);
 string JnlSummaryText();
 
 Setup  g_setups[];      // setup đang mở + đã đóng gần đây (cooldown)
@@ -768,7 +769,7 @@ void SigFlushRound(const datetime hk)
    ArrayResize(g_cands,0);
    for(int r=0;r<n;r++)
      {
-      if(SigHasOpen(done[r]))
+      if(SigHasOpen(done[r]) || JnlHasOpen(done[r]))
          continue;
       int ui=UniFind(done[r]);
       if(ui>=0)
