@@ -244,7 +244,7 @@ double JnlMarkR(const JnlRec &j,const double close)
    return (close-j.entry)/risk;
   }
 
-void JnlTrackExcursion(const int i,const MqlRates &b)
+void JnlTrackExcursion(const int i,const MqlRates &b,const bool fillBar=false)
   {
    double fav,adv;
    if(g_jnl[i].side<0)
@@ -257,7 +257,8 @@ void JnlTrackExcursion(const int i,const MqlRates &b)
       fav=b.high-g_jnl[i].entry;
       adv=g_jnl[i].entry-b.low;
      }
-   if(fav>g_jnl[i].mfe)
+   // nến khớp: không biết giá đi thuận trước hay sau lúc khớp -> chỉ tính MAE
+   if(!fillBar && fav>g_jnl[i].mfe)
       g_jnl[i].mfe=fav;
    if(adv>g_jnl[i].mae)
       g_jnl[i].mae=adv;
@@ -443,7 +444,7 @@ void JnlApplyBar(const int i,const MqlRates &b)
       g_jnl[i].phase=JP_TRADE;
       g_jnl[i].fillTime=b.time;
       g_jnlDirty=true;
-      JnlTrackExcursion(i,b);
+      JnlTrackExcursion(i,b,true);
       // nến khớp: chỉ xét SL (không biết giá chạy theo thứ tự nào trong nến)
       if(JnlHitSL(g_jnl[i],b))
         {
@@ -550,8 +551,15 @@ void JnlUpdate(const datetime now)
       if(g_jnl[i].phase==JP_CLOSED)
          continue;
       string sym=g_jnl[i].sym;
-      if(!(bool)SymbolInfoInteger(sym,SYMBOL_SELECT))
-         SymbolSelect(sym,true);
+      if(!(bool)SymbolInfoInteger(sym,SYMBOL_SELECT) && SymbolSelect(sym,true))
+        {
+         int ui=UniFind(sym);
+         if(ui>=0 && !g_uni[ui].selectedByEA)
+           {
+            g_uni[ui].selectedByEA=true;
+            g_uni[ui].selectedAt=TimeTradeServer();
+           }
+        }
 
       //--- lúc chờ khớp: không xét nến sau thời điểm setup đã đóng
       datetime waitLimit=0;
@@ -571,7 +579,8 @@ void JnlUpdate(const datetime now)
          from=(datetime)((long)curMinute-(long)JNL_MAX_BARS*60);
          g_jnl[i].note="thiếu dữ liệu M1 một đoạn (EA tắt lâu)";
         }
-      if(from<curMinute)
+      bool waitDone=(g_jnl[i].phase==JP_WAIT && waitLimit>0 && from>=waitLimit);
+      if(from<curMinute && !waitDone)
         {
          MqlRates r[];
          int got=CopyRates(sym,PERIOD_M1,from,curMinute,r);
@@ -664,6 +673,17 @@ void JnlLoad()
    g_jnlStateFile=JnlFileBase()+"_open.txt";
    g_jnlLoaded=true;
    ArrayResize(g_jnl,0);
+   g_jsClosed=0;
+   g_jsFilled=0;
+   g_jsWinA=0;
+   g_jsWinB=0;
+   g_jsSumA=0.0;
+   g_jsSumB=0.0;
+   g_jsSumC=0.0;
+   g_jsMoneyA=0.0;
+   g_jdKey=0;
+   g_jdClosed=0;
+   g_jdSumA=0.0;
    if(!FileIsExist(g_jnlStateFile))
       return;
    int h=FileOpen(g_jnlStateFile,FILE_READ|FILE_TXT|FILE_UNICODE|FILE_SHARE_READ);
