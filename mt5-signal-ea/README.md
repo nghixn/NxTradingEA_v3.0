@@ -3,7 +3,7 @@
 > **EA chỉ báo tín hiệu. Tuyệt đối không đặt, sửa hay đóng lệnh.** Mã nguồn không gọi `OrderSend`, `CTrade` hay bất kỳ hàm giao dịch nào, và không dùng DLL.
 > Tín hiệu chỉ để tham khảo, không phải lời khuyên đầu tư.
 
-Phiên bản hiện tại: **0.2.0, Giai đoạn 2** (thêm phân tích bias, setup chờ hồi/phá vỡ, SL/TP, quy tắc ưu tiên/tương quan/phơi nhiễm, tổng rủi ro, xếp hạng, tin tức).
+Phiên bản hiện tại: **0.4.0, Giai đoạn 4** (thêm gửi Telegram thật, hàng đợi + retry, lưu trạng thái để khởi động lại không báo trùng, tóm tắt cuối ngày).
 
 ---
 
@@ -14,9 +14,9 @@ Phiên bản hiện tại: **0.2.0, Giai đoạn 2** (thêm phân tích bias, se
 | GĐ | Nội dung | Trạng thái |
 |---|---|---|
 | 1 | Khung EA (`OnInit/OnTimer/OnDeinit`), khám phá + phân loại + lọc symbol, quét xoay vòng, tính SMA/BB/RSI/ATR từ `CopyRates`, DryRun, bảng trạng thái, self-test đối chiếu `iMA/iBands/iRSI/iATR` + bảng tick value | Đã giao |
-| 2 | Chấm điểm bias đa khung, tìm vùng Entry (confluence), setup chờ hồi/phá vỡ, SL/TP/RR, hủy kèo, hai tầng ngưỡng, nhóm tương quan, phơi nhiễm tiền tệ, xếp hạng top K, giới hạn tin/ngày, cảnh báo tin tức | **Đã giao** |
+| 2 | Chấm điểm bias đa khung, tìm vùng Entry (confluence), setup chờ hồi/phá vỡ, SL/TP/RR, hủy kèo, hai tầng ngưỡng, nhóm tương quan, phơi nhiễm tiền tệ, xếp hạng top K, giới hạn tin/ngày, cảnh báo tin tức | Đã giao |
 | 3 | Quản lý vốn: lot theo SL thật, `CẢNH BÁO RỦI RO`, tổng rủi ro, "đang chờ, vượt ngưỡng rủi ro" | Phần lớn đã làm sớm ở GĐ2 (mục 4.6 yêu cầu tính tổng rủi ro). GĐ3 còn lại: đối chiếu số liệu thật, tinh chỉnh |
-| 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | Chưa làm (GĐ1 đã có tách tin + DryRun) |
+| 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | **Đã giao** |
 | 5 | Đọc vùng vẽ tay (`OBJ_RECTANGLE`, `OBJ_TREND`) trên mọi chart đang mở | Chưa làm |
 | 6 | Hoàn thiện README/TESTING, đối chiếu nghiệm thu | Một phần (tài liệu GĐ1) |
 
@@ -29,19 +29,20 @@ mt5-signal-ea/
   Include/Universe.mqh     Khám phá, phân loại, lọc symbol, quản lý Market Watch, quét xoay vòng
   Include/Indicators.mqh   SMA/BB/RSI/ATR tự tính từ CopyRates + cache handle (tùy chọn) cho ưu tiên/phụ
   Include/Risk.mqh         Thông số hợp đồng, rủi ro ở lot X, lot gợi ý theo % rủi ro
-  Include/Telegram.mqh     Tách tin theo giới hạn ký tự, DryRun (GĐ4: WebRequest, hàng đợi, retry)
+  Include/Telegram.mqh     WebRequest sendMessage, tách tin, hàng đợi, retry, xử lý 429/4014/4060, DryRun
   Include/SelfTest.mqh     Đối chiếu chỉ báo tự tính với iMA/iBands/iRSI/iATR + bảng tick value (thêm)
   Include/Analysis.mqh     Chấm điểm bias, swing, vùng Entry hội tụ, phá vỡ H4, SL/TP/RR
   Include/Signals.mqh      Vòng đời setup, ưu tiên/tương quan/phơi nhiễm, tổng rủi ro, top K, nội dung tin (thêm)
   Include/News.mqh         Lịch kinh tế MT5: tin mức cao trong 2 giờ tới (best-effort, thêm)
-  Include/State.mqh        (GĐ4) lưu/đọc trạng thái
+  Include/State.mqh        Lưu/đọc trạng thái setup + bộ đếm ngày (MQL5/Files/SignalEA/state_<login>.txt)
   README.md, TESTING.md
 ```
 
 ### Luồng dữ liệu
 
 ```
-OnTimer (30s)
+OnTimer (1s): TgProcessQueue (gửi tối đa 1 tin, giãn cách InpTgMinIntervalMs)
+ScanCycle (mỗi 30s)
  ├─ (mỗi 6h) UniBuild: SymbolsTotal/SymbolName → lọc hậu tố, nhóm, trade mode → g_uni[] + log nhận/loại + universe.csv
  ├─ Giờ server mới? → mọi symbol thành "đến hạn"
  └─ RunScanCycle: ưu tiên/phụ trước, rồi xoay vòng nhóm khám phá; tối đa N symbol nặng/chu kỳ + ngân sách ms
@@ -75,7 +76,7 @@ OnTimer (30s)
 10. **MN1/W1 thiếu dữ liệu** (ví dụ thiếu nến cho SMA200): giá trị là `EMPTY_VALUE`, hiển thị `n/a`, không báo lỗi.
 11. **Múi giờ hiển thị**: GMT+7. Độ lệch giờ server được tính bằng `TimeTradeServer() - TimeGMT()` và làm tròn tới 15 phút.
 12. **Mã hóa file**: các file nguồn là UTF-8 có BOM để MetaEditor đọc đúng chuỗi tiếng Việt.
-13. **Trạng thái setup ở GĐ2 chỉ nằm trong RAM**: khởi động lại EA thì mất danh sách setup đang mở. GĐ4 sẽ lưu ra file và chống báo trùng khi khởi động lại.
+13. **Trạng thái setup** được lưu vào `MQL5/Files/SignalEA/state_<số tài khoản>.txt` mỗi khi có thay đổi. File được ghi qua file tạm rồi đổi tên nên không bị hỏng giữa chừng. Khởi động lại EA thì setup đang mở và cooldown được nạp lại, nên không báo trùng. Nếu EA tắt trong lúc có nến H4 đóng vượt SL, khi chạy lại EA vẫn xét các nến đã bỏ lỡ và báo HỦY KÈO. Hàng đợi Telegram chưa gửi thì không được lưu: khi gỡ EA, các tin đó được in ra log.
 14. **Tin tổng hợp** được gửi khi xong vòng quét giờ (hoặc khi sang giờ mới). Tin chi tiết cho ưu tiên được gửi ngay, không đợi hết vòng.
 
 ---
@@ -99,7 +100,7 @@ OnTimer (30s)
 
 ---
 
-## 4. Telegram (dùng thật từ Giai đoạn 4)
+## 4. Telegram
 
 > ⚠️ **BẢO MẬT TOKEN**: Bot token cho phép bất kỳ ai điều khiển bot của bạn. **Không chia sẻ** token, không chụp màn hình phần input, không commit token lên Git. EA không hard-code token; bạn nhập token qua input của EA.
 
@@ -114,7 +115,24 @@ OnTimer (30s)
 
 ### Cho phép WebRequest
 **Tools → Options → Expert Advisors → Allow WebRequest for listed URL** → thêm `https://api.telegram.org`.
-Nếu chưa làm bước này, EA sẽ báo lỗi 4060 và in lại hướng dẫn này trong log (từ GĐ4).
+Nếu chưa làm bước này, WebRequest sẽ báo lỗi (4014/4060) và EA in lại hướng dẫn này trong log, tối đa 10 phút một lần.
+
+### Bật gửi thật
+1. Đặt `InpDryRun=false`, `InpTgEnabled=true`, nhập `InpTgToken` và `InpTgChatId`.
+2. Gắn EA. Tin "EA ĐÃ CHẠY" là **tin thử**: nhận được tin này nghĩa là cấu hình đúng.
+3. Trong Strategy Tester, WebRequest không hoạt động nên EA tự chuyển sang chỉ in log.
+
+### Cách gửi
+- Gửi POST tới `https://api.telegram.org/bot<TOKEN>/sendMessage` dạng form-urlencoded, UTF-8, **không dùng `parse_mode`** (văn bản thuần, không lỗi ký tự).
+- **Hàng đợi** giữ đúng thứ tự. Mỗi giây gửi tối đa 1 tin, các tin cách nhau ít nhất `InpTgMinIntervalMs` (3000 ms, tức 20 tin/phút, đúng giới hạn của group).
+- **Thử lại** tối đa `InpTgMaxRetries` (3) lần, giãn cách 5s → 15s → 45s, khi lỗi mạng, timeout, WebRequest bị chặn hoặc HTTP 5xx.
+- **HTTP 429**: chờ đúng `retry_after` mà Telegram trả về, không tính là một lần thử.
+- **HTTP 400/401/403/404** (token sai, chat id sai, bot bị chặn hoặc chưa bấm Start): không thử lại, EA ghi log gợi ý cách sửa.
+- Tin bị bỏ sau khi hết lượt thử, hoặc còn trong hàng đợi lúc gỡ EA, được in nguyên văn ra log để không mất.
+- Token không bao giờ được in ra log.
+
+### Các loại tin
+`EA ĐÃ CHẠY` (khởi động), `SETUP` (chi tiết, kèm nhãn `CẢNH BÁO RỦI RO` hoặc `ĐANG CHỜ, VƯỢT NGƯỠNG RỦI RO` khi cần), `[TỔNG HỢP]`, `GIÁ VÀO VÙNG ENTRY`, `HỦY KÈO`, `HẾT HẠN`, `TÓM TẮT NGÀY` (tùy chọn, lúc 22h GMT+7). Mỗi tin đều có nhãn nhóm `Ưu tiên` / `Phụ` / `Khám phá`.
 
 ---
 
@@ -124,10 +142,13 @@ Nếu chưa làm bước này, EA sẽ báo lỗi 4060 và in lại hướng d�
 |---|---|---|---|
 | Chung | `InpDryRun` | true | Chỉ in nội dung tin ra log, không gọi Telegram |
 | | `InpLogLevel` | INFO | DEBUG để xem chi tiết từng symbol |
-| | `InpTimerSeconds` | 30 | Chu kỳ OnTimer |
+| | `InpTimerSeconds` | 30 | Chu kỳ quét symbol (timer nền chạy 1 giây để gửi Telegram) |
 | | `InpDisplayGmtOffset` | 7 | Múi giờ hiển thị |
 | | `InpShowPanel` | true | Bảng trạng thái (Comment) trên chart |
-| Telegram | `InpTgEnabled`, `InpTgToken`, `InpTgChatId` | tắt / trống | Dùng từ GĐ4 |
+| Telegram | `InpTgEnabled`, `InpTgToken`, `InpTgChatId` | tắt / trống | Cấu hình bot |
+| | `InpTgMinIntervalMs` | 3000 | Giãn cách tối thiểu giữa 2 tin |
+| | `InpTgMaxRetries` | 3 | Số lần thử lại |
+| | `InpDailySummary`, `InpDailySummaryHour` | true, 22 | Tóm tắt cuối ngày (giờ theo múi giờ hiển thị) |
 | | `InpTgMaxChars` | 3800 | Tin dài hơn được tự tách (Telegram giới hạn 4096) |
 | Symbol | `InpPrioritySymbols` | BTCUSD,XAUUSD | Danh sách ưu tiên |
 | | `InpSecondarySymbols` | ETHUSD,XAGUSD | Danh sách phụ |
@@ -177,7 +198,7 @@ Nếu chưa làm bước này, EA sẽ báo lỗi 4060 và in lại hướng d�
 | | `InpMaxCurrencySameSide` | 2 | Phơi nhiễm Forex |
 | Tin tức | `InpNewsEnabled`, `InpNewsLookaheadMin`, `InpNewsCurrencies`, `InpNewsIncludeSymbolCcy` | true, 120, USD, false | |
 
-Input của GĐ4–5 (Telegram thật, lưu trạng thái, tóm tắt cuối ngày, đọc vùng vẽ tay) sẽ được thêm ở giai đoạn tương ứng.
+Input của GĐ5 (đọc vùng vẽ tay) sẽ được thêm khi giao giai đoạn đó.
 
 ---
 
@@ -294,4 +315,8 @@ EA sẽ ghi một file JSON cho mỗi sự kiện vào `MQL5/Files/SignalEA/ai_q
 | Nhiều symbol bị loại vì "Market Watch đầy" | Tăng `InpMaxMarketWatch` hoặc ẩn bớt symbol |
 | "thiếu lịch sử" | Lần đầu tải dữ liệu cần thời gian, EA sẽ tự thử lại ở giờ sau. Có thể mở chart D1 của symbol đó một lần để tải nhanh |
 | Chu kỳ chậm (> 2 lần ngân sách) | Giảm `InpSymbolsPerCycle` |
-| Lỗi 4060 khi gửi Telegram (GĐ4) | Whitelist `https://api.telegram.org` (mục 4) |
+| Lỗi 4014/4060 khi gửi Telegram | Whitelist `https://api.telegram.org` (mục 4) rồi gắn lại EA |
+| `Telegram từ chối (HTTP 401...)` | Token sai: lấy lại token từ @BotFather |
+| `Telegram từ chối (HTTP 400: chat not found)` | Chat id sai, hoặc chưa nhắn cho bot / chưa thêm bot vào group |
+| `Telegram từ chối (HTTP 403...)` | Bạn đã chặn bot hoặc bot bị kick khỏi group |
+| Muốn xóa toàn bộ setup đã lưu | Gỡ EA, xóa `MQL5/Files/SignalEA/state_<số TK>.txt`, rồi gắn lại EA |

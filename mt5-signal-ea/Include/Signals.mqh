@@ -69,6 +69,15 @@ string g_corrNames[];
 string g_corrCodes[];   // "XAU,XAG,XPT"
 int    g_sigDayKey=0;
 int    g_sigNewToday=0;
+bool   g_stateDirty=false;  // cần ghi lại file trạng thái
+//--- thống kê trong ngày (theo múi giờ hiển thị) cho tóm tắt cuối ngày
+int    g_dayNewPri=0;
+int    g_dayNewOther=0;
+int    g_dayTriggered=0;
+int    g_dayInvalid=0;
+int    g_dayExpired=0;
+int    g_dayDone=0;
+int    g_summarySentDay=0;
 
 void SetupCopy(Setup &d,const Setup &s)
   {
@@ -547,6 +556,13 @@ void SigClose(const int i,const int newState,const string kind,const string reas
   {
    g_setups[i].state=newState;
    g_setups[i].closedAt=TimeTradeServer();
+   g_stateDirty=true;
+   if(newState==SS_INVALIDATED)
+      g_dayInvalid++;
+   else if(newState==SS_EXPIRED)
+      g_dayExpired++;
+   else if(newState==SS_DONE)
+      g_dayDone++;
    LogI(StringFormat("[%s] %s: %s (%s)",g_setups[i].sym,kind,reason,g_setups[i].id));
    if(notify)
       NotifySend(SigMsgClosed(g_setups[i],kind,reason));
@@ -582,6 +598,13 @@ void SigRollDay()
      {
       g_sigDayKey=k;
       g_sigNewToday=0;
+      g_dayNewPri=0;
+      g_dayNewOther=0;
+      g_dayTriggered=0;
+      g_dayInvalid=0;
+      g_dayExpired=0;
+      g_dayDone=0;
+      g_stateDirty=true;
      }
   }
 
@@ -609,6 +632,13 @@ int SigAdmit(Setup &c,const bool sendDetail,bool &inZone,string &why)
    int n=ArraySize(g_setups);
    ArrayResize(g_setups,n+1,16);
    SetupCopy(g_setups[n],c);
+   g_stateDirty=true;
+   if(c.tier==TIER_PRIORITY)
+      g_dayNewPri++;
+   else
+      g_dayNewOther++;
+   if(inZone)
+      g_dayTriggered++;
    LogI(StringFormat("[%s] SETUP MỚI %s %s | điểm %d/%d | RR %.2f | chất lượng %.0f | %s (%s)",c.sym,SideName(c.side),
                      SetupTypeName(c.type),c.score,c.maxScore,c.rr1,c.quality,
                      pending ? "CHỜ - vượt ngưỡng rủi ro" : SigStateName(c.state),c.id));
@@ -768,7 +798,10 @@ void SigPrune(const datetime now)
       w++;
      }
    if(w!=n)
+     {
       ArrayResize(g_setups,w);
+      g_stateDirty=true;
+     }
   }
 
 //+------------------------------------------------------------------+
@@ -796,15 +829,33 @@ void SigMonitor(const datetime now)
          continue;
         }
 
-      //--- hủy kèo: nến H4 đóng vượt SL
-      MqlRates r[];
-      if(CopyRates(sym,PERIOD_H4,1,1,r)==1 && r[0].time>g_setups[i].lastH4Checked)
+      //--- hủy kèo: nến H4 đóng vượt SL (xét cả các nến bị bỏ lỡ, ví dụ khi EA tắt)
+      MqlRates last[];
+      if(CopyRates(sym,PERIOD_H4,1,1,last)==1 && last[0].time>g_setups[i].lastH4Checked)
         {
-         g_setups[i].lastH4Checked=r[0].time;
-         bool broken=(side<0) ? (r[0].close>g_setups[i].sl) : (r[0].close<g_setups[i].sl);
+         MqlRates r[];
+         int cnt=1;
+         if((long)last[0].time-(long)g_setups[i].lastH4Checked>4*3600 && g_setups[i].lastH4Checked>0)
+            cnt=60;
+         int got=(cnt==1) ? CopyRates(sym,PERIOD_H4,1,1,r) : CopyRates(sym,PERIOD_H4,1,cnt,r);
+         bool broken=false;
+         double brokeClose=0.0;
+         // r[] không phải series: cũ -> mới
+         for(int b=0;b<got && !broken;b++)
+           {
+            if(r[b].time<=g_setups[i].lastH4Checked)
+               continue;
+            if((side<0) ? (r[b].close>g_setups[i].sl) : (r[b].close<g_setups[i].sl))
+              {
+               broken=true;
+               brokeClose=r[b].close;
+              }
+           }
+         g_setups[i].lastH4Checked=last[0].time;
+         g_stateDirty=true;
          if(broken)
            {
-            SigClose(i,SS_INVALIDATED,"HỦY KÈO",StringFormat("H4 đóng %s %s mức hủy %s",FmtPrice(sym,r[0].close),
+            SigClose(i,SS_INVALIDATED,"HỦY KÈO",StringFormat("H4 đóng %s %s mức hủy %s",FmtPrice(sym,brokeClose),
                      (side<0) ? "trên" : "dưới",FmtPrice(sym,g_setups[i].sl)),true);
             continue;
            }
@@ -818,6 +869,8 @@ void SigMonitor(const datetime now)
            {
             g_setups[i].state=SS_TRIGGERED;
             g_setups[i].triggeredAt=now;
+            g_stateDirty=true;
+            g_dayTriggered++;
             LogI(StringFormat("[%s] GIÁ VÀO VÙNG ENTRY (%s)",sym,g_setups[i].id));
             NotifySend(SigMsgEntry(g_setups[i]));
             continue;
@@ -849,6 +902,42 @@ void SigMonitor(const datetime now)
         }
      }
    SigPrune(now);
+  }
+
+//+------------------------------------------------------------------+
+//| Tóm tắt cuối ngày (1 lần/ngày, sau InpDailySummaryHour GMT+x)     |
+//+------------------------------------------------------------------+
+void SigDailySummaryCheck(const datetime now)
+  {
+   if(!InpDailySummary)
+      return;
+   MqlDateTime dt;
+   TimeToStruct(ServerToDisplay(now),dt);
+   int key=dt.year*10000+dt.mon*100+dt.day;
+   if(dt.hour<InpDailySummaryHour || g_summarySentDay==key)
+      return;
+   g_summarySentDay=key;
+   g_stateDirty=true;
+   string m=StringFormat("[%s] TÓM TẮT NGÀY %02d/%02d (%s)\n",EA_NAME,dt.day,dt.mon,g_displayTzLabel);
+   m+=StringFormat("Setup mới: Ưu tiên %d | Phụ/Khám phá %d (giới hạn %d)\n",g_dayNewPri,g_dayNewOther,InpMaxNewPerDay);
+   m+=StringFormat("Vào vùng Entry: %d | Hủy kèo: %d | Hết hạn: %d | Đạt mục tiêu: %d\n",
+                   g_dayTriggered,g_dayInvalid,g_dayExpired,g_dayDone);
+   int open=SigOpenCount();
+   m+=StringFormat("Setup đang mở (%d):\n",open);
+   int n=ArraySize(g_setups);
+   for(int i=0;i<n;i++)
+     {
+      if(!SigIsOpenState(g_setups[i].state))
+         continue;
+      m+=StringFormat("- %s %s %s [%s] E %s-%s | SL %s | TP1 %s\n",g_setups[i].sym,SideName(g_setups[i].side),
+                      SetupTypeCode(g_setups[i].type),SigStateName(g_setups[i].state),
+                      SigP(g_setups[i],g_setups[i].entryLow),SigP(g_setups[i],g_setups[i].entryHigh),
+                      SigP(g_setups[i],g_setups[i].sl),SigP(g_setups[i],g_setups[i].tp1));
+     }
+   m+=SigTotalRiskText()+"\n";
+   m+="Số dư: "+FmtMoney(RiskBalance())+" | Telegram: "+TgStatusText()+"\n";
+   m+="Chỉ là tín hiệu tham khảo, không phải lời khuyên đầu tư.";
+   NotifySend(m);
   }
 
 // Dòng cho bảng trạng thái

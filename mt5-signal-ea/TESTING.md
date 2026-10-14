@@ -120,7 +120,48 @@ Input chung: `InpDryRun=true`, `InpLogSnapshots=true`. Nên dùng `InpLogLevel=D
 ### T2.10 Hiệu năng
 - ☐ Chạy cả ngày với `ALL_BROKER_SYMBOLS`: thời gian chu kỳ max vẫn chỉ vài giây, RAM không tăng dần.
 
-## Giai đoạn 3–6 (sẽ chi tiết hóa khi giao)
+## Giai đoạn 4: Telegram thật, trạng thái, tóm tắt ngày
+
+### T4.1 Gửi tin thử (nghiệm thu 3)
+- ☐ Whitelist `https://api.telegram.org` (README mục 4).
+- ☐ Đặt `InpDryRun=false`, `InpTgEnabled=true`, nhập token và chat id rồi gắn EA. Điện thoại nhận tin `[SignalEA] EA ĐÃ CHẠY`, tiếng Việt hiển thị đúng dấu.
+- ☐ Log có `[TG] đã gửi: [SignalEA] EA ĐÃ CHẠY ...`. Bảng trạng thái có dòng `Telegram: đã gửi 1, lỗi 0, chờ 0 | OK hh:mm`.
+- ☐ Trong toàn bộ log không xuất hiện token.
+
+### T4.2 Lỗi cấu hình
+- ☐ Bỏ URL khỏi whitelist rồi gắn lại EA: log có `WebRequest bị chặn (lỗi 4014 hoặc 4060)` kèm hướng dẫn, sau đó là các lần thử lại 5s/15s/45s. Hết lượt thì tin bị bỏ và nội dung được in ra log. EA vẫn chạy bình thường.
+- ☐ Token sai (ví dụ đổi 1 ký tự): log `Telegram từ chối (HTTP 401 ...)` và không thử lại.
+- ☐ Chat id sai: log `HTTP 400 ... chat not found`.
+- ☐ `InpTgEnabled=true`, `InpDryRun=false` nhưng token trống: cảnh báo một lần, tin chỉ in ra log.
+
+### T4.3 Hàng đợi, tách tin, giới hạn tốc độ
+- ☐ Khi có nhiều tin cùng lúc (khởi động + tổng hợp + chi tiết), các tin đến **đúng thứ tự** và cách nhau ít nhất khoảng 3 giây.
+- ☐ Tạm đặt `InpTgMaxChars=300`: một tin dài được tách thành nhiều tin và không mất dòng nào.
+- ☐ (Nếu gặp) HTTP 429: log `Telegram giới hạn tốc độ (429) - chờ N giây.`, sau đó tin vẫn được gửi.
+
+### T4.4 Lưu trạng thái và không báo trùng (nghiệm thu 3)
+- ☐ Khi có ít nhất một setup đang mở, file `MQL5/Files/SignalEA/state_<số TK>.txt` tồn tại, có dòng `H|1|...` và dòng `S|<id>|...`.
+- ☐ Gỡ EA rồi gắn lại (hoặc khởi động lại terminal):
+  - Log có `Đã nạp trạng thái: n setup (m đang mở)`.
+  - Tin khởi động ghi `Setup đang mở (khôi phục từ file trạng thái): m`.
+  - **Không có tin SETUP nào bị gửi lại** cho các symbol đó, kể cả khi EA phân tích lại ngay trong giờ hiện tại (log debug `đang có setup ...`).
+- ☐ Setup đã ở trạng thái "đã vào vùng" thì sau khi khởi động lại không gửi lại tin `GIÁ VÀO VÙNG ENTRY`.
+- ☐ Tắt EA qua một nến H4 đóng vượt SL rồi bật lại: có tin `HỦY KÈO` (EA xét cả nến đã bỏ lỡ).
+- ☐ Đổi `InpTimerSeconds` hoặc đổi khung chart (EA được nạp lại): trạng thái vẫn giữ nguyên.
+- ☐ Bộ đếm `tin phụ/khám phá hôm nay x/10` được giữ qua lần khởi động lại trong cùng ngày, và về 0 khi sang ngày mới (GMT+7).
+
+### T4.5 Tóm tắt cuối ngày
+- ☐ Tạm đặt `InpDailySummaryHour` bằng giờ hiện tại (GMT+7): trong vòng 30 giây nhận tin `TÓM TẮT NGÀY dd/mm`, có số setup mới, số vào vùng/hủy/hết hạn/đạt mục tiêu, danh sách setup đang mở và tổng rủi ro.
+- ☐ Khởi động lại EA trong cùng ngày: không gửi lại tóm tắt.
+
+### T4.6 DryRun cả ngày (nghiệm thu 8)
+- ☐ Chạy `InpDryRun=true` 24 giờ với `ALL_BROKER_SYMBOLS`. Đếm các dòng `[DRYRUN] ----- Tin Telegram`:
+  - Tin SETUP của Phụ/Khám phá không vượt 10 (trong log có `đã đạt giới hạn ...` nếu chạm ngưỡng).
+  - Mỗi tin tổng hợp có tối đa 3 setup.
+  - Không có setup nào bị báo hai lần.
+- ☐ RAM/CPU ổn định (như T1.8). Bảng trạng thái hiện `max` thời gian chu kỳ chỉ vài giây.
+
+## Giai đoạn 3, 5, 6 (sẽ chi tiết hóa khi giao)
 - GĐ3: đối chiếu số liệu rủi ro thật trên Exness, tinh chỉnh.
-- GĐ4: gửi tin thật, lỗi 4060, retry, tự tách tin; khởi động lại EA không báo trùng setup (nghiệm thu 3); DryRun cả ngày không gây bão tin (nghiệm thu 8); tóm tắt cuối ngày.
 - GĐ5: vẽ rectangle/trendline trên chart và kiểm tra yếu tố "vùng vẽ tay" có trong lý do của setup.
+- GĐ6: rà soát toàn bộ nghiệm thu.

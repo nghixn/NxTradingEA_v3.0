@@ -4,7 +4,7 @@
 //| Không dùng DLL. Không có hàm giao dịch nào trong mã nguồn.       |
 //+------------------------------------------------------------------+
 #property copyright   "NxTrading"
-#property version     "0.20"
+#property version     "0.40"
 #property description "Quét nhiều symbol, phân tích đa khung, gửi tín hiệu Telegram. Không giao dịch."
 
 #include "Include\Common.mqh"
@@ -15,15 +15,19 @@
 input group "=== 1. Chung ==="
 input bool               InpDryRun                 = true;               // DryRun: chỉ in tin ra log, không gọi Telegram
 input ENUM_LOG_LEVEL     InpLogLevel               = LOGLVL_INFO;        // Mức log
-input int                InpTimerSeconds           = 30;                 // Chu kỳ OnTimer (giây)
+input int                InpTimerSeconds           = 30;                 // Chu kỳ quét symbol (giây)
 input double             InpDisplayGmtOffset       = 7.0;                // Múi giờ hiển thị (GMT+x)
 input bool               InpShowPanel              = true;               // Hiện bảng trạng thái trên chart
 
-input group "=== 2. Telegram (gửi thật ở Giai đoạn 4) ==="
+input group "=== 2. Telegram ==="
 input bool               InpTgEnabled              = false;              // Bật gửi Telegram
 input string             InpTgToken                = "";                 // Bot token (KHÔNG chia sẻ cho ai)
 input string             InpTgChatId               = "";                 // Chat id nhận tin
 input int                InpTgMaxChars             = 3800;               // Độ dài tối đa 1 tin (Telegram: 4096)
+input int                InpTgMinIntervalMs        = 3000;               // Giãn cách tối thiểu giữa 2 tin (ms; group: <= 20 tin/phút)
+input int                InpTgMaxRetries           = 3;                  // Số lần thử lại khi lỗi (5s, 15s, 45s)
+input bool               InpDailySummary           = true;               // Gửi tóm tắt cuối ngày
+input int                InpDailySummaryHour       = 22;                 // Giờ gửi tóm tắt (theo múi giờ hiển thị)
 
 input group "=== 3. Danh sách & vũ trụ symbol ==="
 input string             InpPrioritySymbols        = "BTCUSD,XAUUSD";    // Danh sách ưu tiên (phân cách bằng dấu phẩy)
@@ -128,6 +132,7 @@ input bool               InpNewsIncludeSymbolCcy   = false;              // Thê
 #include "Include\Analysis.mqh"
 #include "Include\News.mqh"
 #include "Include\Signals.mqh"
+#include "Include\State.mqh"
 #include "Include\SelfTest.mqh"
 
 //+------------------------------------------------------------------+
@@ -168,6 +173,12 @@ bool ValidateInputs()
      { LogE("InpMaxMarketWatch phải >= 5."); ok=false; }
    if(InpTgMaxChars<200 || InpTgMaxChars>4096)
      { LogE("InpTgMaxChars phải trong [200..4096]."); ok=false; }
+   if(InpTgMinIntervalMs<500 || InpTgMaxRetries<0 || InpTgMaxRetries>10)
+     { LogE("InpTgMinIntervalMs phải >= 500, InpTgMaxRetries trong [0..10]."); ok=false; }
+   if(InpDailySummaryHour<0 || InpDailySummaryHour>23)
+     { LogE("InpDailySummaryHour phải trong [0..23]."); ok=false; }
+   if(InpTgEnabled && StrTrim(InpTgToken)!="" && StringFind(InpTgToken,":")<0)
+      LogW("Token Telegram có vẻ sai định dạng (dạng đúng: 123456789:AA...).");
    if(InpRiskPerTradePct<=0.0 || InpMaxMinLotRiskPct<=0.0 || InpFeasSlAtrMult<=0.0)
      { LogE("Tham số rủi ro phải > 0."); ok=false; }
    if(InpMaxDeferPerHour<1)
@@ -235,6 +246,8 @@ string BuildStartupMessage()
                    InpMinScorePriority,InpMinRRPriority,InpMinScoreOther,InpMinRROther,InpTopK,InpMaxNewPerDay);
    m+=StringFormat("Rủi ro: %.1f%%/setup, tổng tối đa %.1f%%\n",InpRiskPerTradePct,InpMaxTotalRiskPct);
    m+="Thời gian: "+FmtDisplayTime(TimeTradeServer())+"\n";
+   m+="Setup đang mở (khôi phục từ file trạng thái): "+IntegerToString(SigOpenCount())+"\n";
+   m+="Telegram: "+TgStatusText()+"\n";
    m+="EA chỉ báo tín hiệu, không đặt lệnh. Chỉ là tham khảo, không phải lời khuyên đầu tư.";
    return m;
   }
@@ -589,6 +602,7 @@ void UpdatePanel(const string note)
                    n,g_uniRejectedCount,UniMarketWatchCount(),InpMaxMarketWatch,IndHandleCount());
    s+=StringFormat("Chu kỳ #%I64u: %d symbol, %I64u ms (max %I64u ms)\n",g_cycleNo,g_lastCycleHeavy,g_lastCycleMs,g_maxCycleMs);
    s+=StringFormat("Giờ này: %d/%d xong | %s\n",DoneThisHour(g_curHourKey),n,StatusSummary());
+   s+="Telegram: "+TgStatusText()+"\n";
    s+="--- Ưu tiên / Phụ ---\n";
    for(int i=0;i<n;i++)
      {
@@ -635,7 +649,6 @@ int OnInit()
 
    TimeInitOffsets(InpDisplayGmtOffset);
    SigInit();
-   SigRollDay();
    LogI(StringFormat("=== %s v%s (%s) khởi động | DryRun=%s | server GMT%+.1f | hiển thị %s | tải %d nến/khung ===",
                      EA_NAME,EA_VERSION,EA_STAGE,InpDryRun ? "BẬT" : "TẮT",g_serverGmtOffsetSec/3600.0,
                      g_displayTzLabel,g_barsToLoad));
@@ -649,12 +662,18 @@ int OnInit()
    if(ArraySize(g_uni)==0)
       LogW("Chưa có symbol nào đủ điều kiện (có thể terminal chưa kết nối) - sẽ thử lại mỗi 5 phút.");
 
+   //--- khôi phục setup đã báo -> khởi động lại không báo trùng
+   StateLoad();
+   StateEnsureSymbolsSelected();
+   SigRollDay();
+
    NotifySend(BuildStartupMessage());
 
    if(InpSelfTest)
       SelfTestStart(g_ind);
 
-   if(!EventSetTimer(InpTimerSeconds))
+   // timer 1 giây: gửi hàng đợi Telegram; quét symbol mỗi InpTimerSeconds
+   if(!EventSetTimer(1))
      {
       LogE(StringFormat("Không tạo được timer (lỗi %d).",GetLastError()));
       return INIT_FAILED;
@@ -664,9 +683,23 @@ int OnInit()
   }
 
 //+------------------------------------------------------------------+
-//| OnTimer: toàn bộ xử lý nằm ở đây (không tính theo tick)          |
+//| OnTimer (1 giây): gửi Telegram; mỗi InpTimerSeconds chạy ScanCycle |
+//| Không tính toán theo tick.                                       |
 //+------------------------------------------------------------------+
+ulong g_lastScanMs=0;
+void  ScanCycle();
+
 void OnTimer()
+  {
+   TgProcessQueue();
+   ulong nowMs=GetTickCount64();
+   if(g_lastScanMs>0 && nowMs-g_lastScanMs<(ulong)InpTimerSeconds*1000)
+      return;
+   g_lastScanMs=nowMs;
+   ScanCycle();
+  }
+
+void ScanCycle()
   {
    ulong t0=GetTickCount64();
    g_cycleNo++;
@@ -712,6 +745,9 @@ void OnTimer()
    RunScanCycle(hk,t0);
    CheckHourDone(hk,now);
    CheckMarketWatchLimit(now);
+   SigDailySummaryCheck(now);
+   if(g_stateDirty)
+      StateSave();
 
    g_lastCycleMs=GetTickCount64()-t0;
    if(g_lastCycleMs>g_maxCycleMs)
@@ -735,6 +771,8 @@ void OnTick()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   StateSave();
+   TgDeinit();
    SelfTestDeinit();
    IndReleaseAllHandles();
    if(InpReleaseSymbolsAfterScan)
