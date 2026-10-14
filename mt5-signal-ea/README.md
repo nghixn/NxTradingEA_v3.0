@@ -3,7 +3,7 @@
 > **EA chỉ báo tín hiệu. Tuyệt đối không đặt, sửa hay đóng lệnh.** Mã nguồn không gọi `OrderSend`, `CTrade` hay bất kỳ hàm giao dịch nào, và không dùng DLL.
 > Tín hiệu chỉ để tham khảo, không phải lời khuyên đầu tư.
 
-Phiên bản hiện tại: **0.9.0**, ứng viên phát hành. Đã đủ các giai đoạn 1–5. **Mã chưa được biên dịch bằng MetaEditor**: sẽ lên 1.0.0 sau khi biên dịch sạch và đạt các mục nghiệm thu ở mục 9.
+Phiên bản hiện tại: **0.9.1**, ứng viên phát hành. Đã đủ các giai đoạn 1–5, cộng thêm cầu nối Python gọi Claude API (giai đoạn 6, thư mục `ai-bridge/`). **Mã chưa được biên dịch bằng MetaEditor**: sẽ lên 1.0.0 sau khi biên dịch sạch và đạt các mục nghiệm thu ở mục 9.
 
 ---
 
@@ -17,7 +17,8 @@ Phiên bản hiện tại: **0.9.0**, ứng viên phát hành. Đã đủ các g
 | 2 | Chấm điểm bias đa khung, tìm vùng Entry (confluence), setup chờ hồi/phá vỡ, SL/TP/RR, hủy kèo, hai tầng ngưỡng, nhóm tương quan, phơi nhiễm tiền tệ, xếp hạng top K, giới hạn tin/ngày, cảnh báo tin tức | Đã giao |
 | 3 | Quản lý vốn: lot theo SL thật, `CẢNH BÁO RỦI RO`, tổng rủi ro, "đang chờ, vượt ngưỡng rủi ro" | **Đã giao** (phần tính toán làm sớm ở GĐ2; GĐ3 thêm kiểm chéo tick value và log diễn giải) |
 | 4 | Telegram thật (`WebRequest`, hàng đợi, retry, rate limit, tin tổng hợp + chi tiết), lưu trạng thái setup ra file, chống báo trùng khi khởi động lại, giới hạn tin/ngày, tóm tắt cuối ngày | Đã giao |
-| 5 | Rà soát toàn bộ mã nguồn, hoàn thiện README/TESTING, bảng đối chiếu nghiệm thu (mục 9) | **Đã giao** |
+| 5 | Rà soát toàn bộ mã nguồn, hoàn thiện README/TESTING, bảng đối chiếu nghiệm thu (mục 9) | Đã giao |
+| 6 | Cầu nối Python gọi Claude API: EA xuất JSON → script gọi Claude → gửi nhận định lên Telegram, in token, giới hạn lần gọi/ngày | **Đã giao** |
 
 ### Module
 
@@ -30,6 +31,8 @@ mt5-signal-ea/
   Include/Risk.mqh         Thông số hợp đồng, rủi ro ở lot X, lot gợi ý theo % rủi ro, kiểm chéo tick value, diễn giải cách tính
   Include/Telegram.mqh     WebRequest sendMessage, tách tin, hàng đợi, retry, xử lý 429/4014/4060, DryRun
   Include/SelfTest.mqh     Đối chiếu chỉ báo tự tính với iMA/iBands/iRSI/iATR + bảng tick value (thêm)
+  Include/AiExport.mqh     Xuất JSON sự kiện cho cầu nối AI (thêm)
+  ai-bridge/               Script Python gọi Claude API + test + README riêng (thêm)
   Include/Analysis.mqh     Chấm điểm bias, swing, vùng Entry hội tụ, phá vỡ H4, SL/TP/RR
   Include/Signals.mqh      Vòng đời setup, ưu tiên/tương quan/phơi nhiễm, tổng rủi ro, top K, nội dung tin (thêm)
   Include/News.mqh         Lịch kinh tế MT5: tin mức cao trong 2 giờ tới (best-effort, thêm)
@@ -177,6 +180,7 @@ Nếu chưa làm bước này, WebRequest sẽ báo lỗi (4014/4060) và EA in 
 | Kiểm thử | `InpSelfTest` | false | Đối chiếu chỉ báo + in bảng tick value |
 | | `InpSelfTestSymbols` | BTCUSD,XAUUSD,EURUSD,USDJPY,US30 | Ít nhất 3 nhóm tài sản |
 | | `InpLogSnapshots` | true | In snapshot chỉ báo của ưu tiên/phụ mỗi giờ |
+| Cầu nối AI | `InpAiExport` | false | Xuất JSON khi có SETUP MỚI / GIÁ VÀO VÙNG ENTRY cho script `ai-bridge` |
 
 | Bias & ngưỡng | `InpWeightMN1/W1/D1/H4/H1` | 1/2/3/2/1 | Trọng số bias |
 | | `InpBiasMinConditions` | 3 | Số điều kiện (trên 4) để một khung là tăng/giảm |
@@ -287,31 +291,17 @@ Tổng rủi ro các setup đang mở: $39 (3.9%)
 Chỉ là tín hiệu tham khảo, không phải lời khuyên đầu tư.
 ```
 
-## 7. Giao diện dữ liệu cho cầu nối Python + Claude API (chỉ thiết kế, chưa cài đặt)
+## 7. Cầu nối Python + Claude API (giai đoạn 6)
 
-EA sẽ ghi một file JSON cho mỗi sự kiện vào `MQL5/Files/SignalEA/ai_queue/<id>.json`, **chỉ** khi có `SETUP MỚI` hoặc `GIÁ VÀO VÙNG ENTRY`. Script Python đọc file, gọi Claude API, gửi bình luận lên Telegram, rồi chuyển file sang thư mục `done/`. Không dùng ảnh. Script in số token của mỗi lần gọi và giới hạn số lần gọi mỗi ngày.
-
-```json
-{
-  "schema": "signalea.setup.v1",
-  "event": "NEW_SETUP | ENTRY_TOUCHED",
-  "id": "XAUUSD-20261014-13-SELL-PB",
-  "symbol": "XAUUSD", "tier": "priority", "asset_group": "metals",
-  "time_server": "2026-10-14T09:00:00", "time_display": "14/10 13:55 (GMT+7)",
-  "price": { "bid": 4150.2, "ask": 4150.5, "spread_atr_pct": 3.1 },
-  "setup": { "type": "pullback|breakout", "side": "sell|buy",
-             "entry_low": 4172, "entry_high": 4178, "sl": 4196, "tp1": 4135, "tp2": 4100,
-             "rr1": 1.7, "rr2": 3.2, "invalidation": "H4 close above 4196", "expiry_hours": 24,
-             "confluence": ["SMA50_H4", "SMA200_H1", "swing_H1"] },
-  "bias": { "score": -6, "max": 9, "by_tf": { "MN1": 0, "W1": 0, "D1": -1, "H4": -1, "H1": -1 } },
-  "indicators": { "H1": { "close": 0, "sma10": 0, "sma20": 0, "sma50": 0, "sma200": 0,
-                          "bb_up": 0, "bb_mid": 0, "bb_low": 0, "rsi": 0, "atr": 0 },
-                  "H4": {}, "D1": {}, "W1": {}, "MN1": {} },
-  "risk": { "balance": 1000, "lot": 0.01, "risk_money": 21, "risk_pct": 2.1,
-            "risk_warning": false, "total_open_risk_pct": 3.9 },
-  "news": [ { "time": "...", "currency": "USD", "title": "..." } ]
-}
-```
+Hướng dẫn đầy đủ nằm ở **`ai-bridge/README.md`**. Tóm tắt:
+- Đặt `InpAiExport=true`. Mỗi khi EA báo `SETUP MỚI` hoặc `GIÁ VÀO VÙNG ENTRY`, EA ghi một file JSON (`signalea.setup.v1`, không có ảnh) vào `MQL5/Files/SignalEA/ai_queue/`. Setup "đang chờ, vượt ngưỡng rủi ro" không được xuất.
+- `ai-bridge/signal_ai_bridge.py` chạy trên cùng VPS:
+  - đọc từng file JSON và gọi Claude (`claude-opus-5-5`, effort `medium`, tự chuyển model dự phòng nếu bị từ chối);
+  - gửi nhận định tiếng Việt lên Telegram (`[SYM] NHẬN ĐỊNH AI - ...`);
+  - **in số token và chi phí ước tính** sau mỗi lần gọi;
+  - **giới hạn số lần gọi mỗi ngày** (mặc định 20).
+- API key, token Telegram và chat id được đặt qua biến môi trường (`setx`), không ghi trong file.
+- Mẫu JSON: `ai-bridge/sample_event.json`. Test: `python -m unittest -v test_signal_ai_bridge.py` (12 test, không gọi mạng).
 
 ---
 

@@ -4,7 +4,7 @@
 //| Không dùng DLL. Không có hàm giao dịch nào trong mã nguồn.       |
 //+------------------------------------------------------------------+
 #property copyright   "NxTrading"
-#property version     "0.90"
+#property version     "0.91"
 #property description "Quét nhiều symbol, phân tích đa khung, gửi tín hiệu Telegram. Không giao dịch."
 
 #include "Include\Common.mqh"
@@ -84,6 +84,9 @@ input bool               InpSelfTest               = false;              // Ch�
 input string             InpSelfTestSymbols        = "BTCUSD,XAUUSD,EURUSD,USDJPY,US30"; // Symbol self-test (>= 3 nhóm)
 input bool               InpLogSnapshots           = true;               // In snapshot chỉ báo của ưu tiên/phụ mỗi giờ
 
+input group "=== 13. Cầu nối AI (Python + Claude API) ==="
+input bool               InpAiExport               = false;              // Xuất JSON setup mới / giá vào vùng Entry cho script Python
+
 input group "=== 9. Bias & ngưỡng theo tầng ==="
 input int                InpWeightMN1              = 1;                  // Trọng số MN1
 input int                InpWeightW1               = 2;                  // Trọng số W1
@@ -134,6 +137,7 @@ input bool               InpNewsIncludeSymbolCcy   = false;              // Thê
 #include "Include\News.mqh"
 #include "Include\Signals.mqh"
 #include "Include\State.mqh"
+#include "Include\AiExport.mqh"
 #include "Include\SelfTest.mqh"
 
 //+------------------------------------------------------------------+
@@ -460,6 +464,13 @@ bool ProcessSymbol(const int idx,const datetime hk)
    AnaAnalyze(sym,g_uni[idx].tier,h4,nH4,h1,nH1,d1,nD1,snap,newH4,allow,res);
    g_uni[idx].lastH4Seen=h4[1].time;
    g_uni[idx].biasScore=res.score;
+   if(InpAiExport)
+     {
+      int biasCopy[TFI_COUNT];
+      for(int t=0;t<TFI_COUNT;t++)
+         biasCopy[t]=res.biasTf[t];
+      AiSnapStore(sym,snap,biasCopy);
+     }
    string note=allow ? res.note : cwhy;
    if(res.hasSetup)
      {
@@ -671,6 +682,12 @@ int OnInit()
    g_hourStartedAt=g_lastRebuildTry;
    if(ArraySize(g_uni)==0)
       LogW("Chưa có symbol nào đủ điều kiện (có thể terminal chưa kết nối) - sẽ thử lại mỗi 5 phút.");
+
+   if(InpAiExport)
+     {
+      FolderCreate(EA_FILES_DIR+"\\"+AI_QUEUE_DIR);
+      LogI("Cầu nối AI: xuất JSON vào MQL5\\Files\\"+EA_FILES_DIR+"\\"+AI_QUEUE_DIR+" (chạy script ai-bridge để gửi nhận định).");
+     }
 
    //--- khôi phục setup đã báo -> khởi động lại không báo trùng
    StateLoad();

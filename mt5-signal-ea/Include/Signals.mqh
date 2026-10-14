@@ -63,6 +63,9 @@ struct Setup
    datetime          lastH4Checked;
   };
 
+// Khai báo trước (định nghĩa trong AiExport.mqh): xuất JSON cho cầu nối AI
+void AiExportEvent(const Setup &s,const string ev);
+
 Setup  g_setups[];      // setup đang mở + đã đóng gần đây (cooldown)
 Setup  g_cands[];       // ứng viên nhóm phụ/khám phá chờ xếp hạng cuối vòng quét
 string g_corrNames[];
@@ -654,6 +657,9 @@ int SigAdmit(Setup &c,const bool sendDetail,bool &inZone,string &why)
                         c.riskWarn ? " | lot tối thiểu vượt mức -> CẢNH BÁO RỦI RO" : ""));
    if(sendDetail)
       NotifySend(SigMsgNew(g_setups[n],pending,inZone));
+   // setup "đang chờ, vượt ngưỡng rủi ro" không phải tín hiệu -> không gửi cho AI
+   if(!pending)
+      AiExportEvent(g_setups[n],"NEW_SETUP");
    return pending ? 2 : 1;
   }
 
@@ -883,6 +889,7 @@ void SigMonitor(const datetime now)
             g_dayTriggered++;
             LogI(StringFormat("[%s] GIÁ VÀO VÙNG ENTRY (%s)",sym,g_setups[i].id));
             NotifySend(SigMsgEntry(g_setups[i]));
+            AiExportEvent(g_setups[i],"ENTRY_TOUCHED");
             continue;
            }
          //--- giá chạy tới TP1 trước khi vào vùng -> lỡ kèo

@@ -203,3 +203,27 @@ Thông tin nên gửi lại cho tôi:
 2. Đoạn log từ lúc khởi động đến hết vòng quét đầu tiên.
 3. Các dòng `[SELFTEST]` và `[RISK]`.
 4. `MQL5/Files/SignalEA/universe.csv` (hoặc vài dòng có nhóm bị phân loại sai).
+
+## Giai đoạn 6: cầu nối Python + Claude API
+
+### T6.1 Test tự động (không gọi mạng)
+- ☐ Trong thư mục `ai-bridge`: `pip install -r requirements.txt` rồi `python -m unittest -v test_signal_ai_bridge.py` → 12 test OK. (Tôi đã chạy đạt trên môi trường phát triển với `anthropic` 1.13.)
+
+### T6.2 EA xuất JSON
+- ☐ Đặt `InpAiExport=true`. Log khởi động có `Cầu nối AI: xuất JSON vào ...`.
+- ☐ Khi có setup mới: log có `[AI] Đã xuất NEW_SETUP -> MQL5\Files\SignalEA\ai_queue\<id>-NEW_SETUP.json`. Mở file thấy JSON hợp lệ (có thể dán vào jsonlint.com) với đủ các khối `setup`, `bias`, `indicators`, `risk`.
+- ☐ Khi giá vào vùng Entry: có file `<id>-ENTRY_TOUCHED.json`.
+- ☐ Setup "ĐANG CHỜ, VƯỢT NGƯỠNG RỦI RO" không tạo file JSON.
+
+### T6.3 Luồng file, không tốn tiền
+- ☐ `python signal_ai_bridge.py --no-api --dry-run --once`: in prompt cho từng file và chuyển file sang `ai_queue/done/`.
+
+### T6.4 Gọi Claude thật
+- ☐ `python signal_ai_bridge.py --dry-run --once` với `sample_event.json`: in nhận định gồm 4 đoạn (Nhận định / Điểm ủng hộ / Rủi ro cần để ý / Gợi ý xử lý), tiếng Việt, không Markdown. Có dòng `[TOKEN] ... input N | output M | ước tính $x | hôm nay 1/20 lần`.
+- ☐ Bỏ `--dry-run`: Telegram nhận tin `[XAUUSD] NHẬN ĐỊNH AI - SETUP SELL (chờ hồi) - Nhóm: Ưu tiên`.
+- ☐ Đặt sai `ANTHROPIC_API_KEY`: script dừng với thông báo kiểm tra API key (mã thoát 2), file JSON vẫn nằm trong hàng đợi.
+
+### T6.5 Giới hạn và chi phí
+- ☐ `--max-calls 1`, đặt 2 file vào hàng đợi: file thứ 2 vào `skipped/`, Telegram nhận đúng 1 tin báo đạt giới hạn.
+- ☐ Sang ngày mới (GMT+7): bộ đếm trong `ai_bridge_state.json` về 0.
+- ☐ Sau vài ngày, đối chiếu tổng chi phí ước tính trong log với số liệu trên console.anthropic.com.
