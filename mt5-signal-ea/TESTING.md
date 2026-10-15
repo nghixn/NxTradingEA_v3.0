@@ -1,4 +1,4 @@
-# Kế hoạch kiểm thử
+﻿# Kế hoạch kiểm thử
 
 Tài liệu này được cập nhật theo từng giai đoạn. Ký hiệu: ☐ chưa kiểm, ☑ đạt.
 
@@ -278,3 +278,21 @@ Thông tin nên gửi lại cho tôi:
 ### T8.4 Đánh giá
 - ☐ Chạy cấu hình mặc định trên toàn bộ dữ liệu và ghi lại kết quả gốc.
 - ☐ Chia dữ liệu: năm cuối chỉ chạy một lần sau khi đã chọn xong cấu hình (`backtest/README.md` mục 4).
+
+## Giai đoạn 9: vùng hỗ trợ/kháng cự trên chart
+
+### T9.1 Biên dịch và hiển thị
+- ☐ Biên dịch `SignalEA.mq5` sạch (có thêm `Include/Levels.mqh`).
+- ☐ Mở thêm chart BTCUSD H4 và XAUUSD H1 (không gắn EA). Trong khoảng 1 phút sau khi EA chạy, cả hai chart có vùng đỏ (KC) phía trên giá và vùng xanh (HT) phía dưới, mỗi phía tối đa 4 vùng, kèm nhãn giá.
+- ☐ Log có dòng `[LEVELS] BTCUSD KC: ... | HT: ...` và `[LEVELS] XAUUSD ...`.
+
+### T9.2 Đối chiếu bằng mắt
+- ☐ Trên D1/H4: mỗi vùng nằm tại nơi có ít nhất 2 lần đảo chiều (đỉnh/đáy) rõ ràng, hoặc 1 đỉnh/đáy W1.
+- ☐ Rê chuột lên một đường: tooltip ghi đúng số lần chạm W1/D1/H4 và lần chạm gần nhất.
+- ☐ Gửi tôi ảnh chụp chart kèm log `[LEVELS]` nếu thấy vùng sai chỗ, thiếu vùng hiển nhiên hoặc quá dày.
+
+### T9.3 Cập nhật và dọn dẹp
+- ☐ Đổi khung chart (H1 → D1): vùng vẽ lại đúng, nhãn nằm cạnh nến cuối.
+- ☐ Xóa tay một đường: chu kỳ quét sau (≤ 30 giây) vẽ lại.
+- ☐ Đặt `InpLevelsAllCharts=false`: chỉ chart gắn EA có vùng, các chart khác được xóa khi gỡ EA.
+- ☐ Gỡ EA: không còn đối tượng `SEA_LV_*` trên chart nào (Ctrl+B, bật "Show all" để kiểm tra).

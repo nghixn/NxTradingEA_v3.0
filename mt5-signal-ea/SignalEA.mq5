@@ -4,7 +4,7 @@
 //| Không dùng DLL. Không có hàm giao dịch nào trong mã nguồn.       |
 //+------------------------------------------------------------------+
 #property copyright   "NxTrading"
-#property version     "0.92"
+#property version     "0.93"
 #property description "Quét nhiều symbol, phân tích đa khung, gửi tín hiệu Telegram. Không giao dịch."
 
 #include "Include\Common.mqh"
@@ -91,6 +91,22 @@ input group "=== 14. Nhật ký kết quả tín hiệu ==="
 input bool               InpJournalEnabled         = true;               // Mô phỏng kết quả từng setup trên nến M1, ghi CSV
 input int                InpJournalMaxHoldHours    = 120;                // Thời gian giữ lệnh tối đa khi mô phỏng (giờ)
 
+input group "=== 15. Vùng hỗ trợ/kháng cự trên chart ==="
+input bool               InpLevelsEnabled          = true;               // Vẽ vùng hỗ trợ/kháng cự (swing W1/D1/H4)
+input bool               InpLevelsAllCharts        = true;               // Vẽ trên mọi chart đang mở (false: chỉ chart gắn EA)
+input int                InpLevelsPerSide          = 4;                  // Số vùng tối đa mỗi phía (trên/dưới giá)
+input bool               InpLevelsUseW1            = true;               // Dùng swing W1
+input int                InpLevelsMinScore         = 3;                  // Điểm tối thiểu của vùng (chạm W1=3, D1=2, H4=1)
+input int                InpLevelsStrongScore      = 6;                  // Điểm từ mức này = vùng mạnh (nét đậm)
+input double             InpLevelsClusterAtrH4     = 0.5;                // Gom các swing cách nhau <= x ATR(H4) thành 1 vùng
+input double             InpLevelsRangeAtrD1       = 6.0;                // Chỉ lấy vùng cách giá <= x ATR(D1)
+input bool               InpLevelsDrawZones        = true;               // Tô nền vùng (hình chữ nhật)
+input bool               InpLevelsShowLabels       = true;               // Hiện nhãn giá cạnh vùng
+input color              InpLevelsColorRes         = clrCrimson;         // Màu đường kháng cự
+input color              InpLevelsColorSup         = clrSeaGreen;        // Màu đường hỗ trợ
+input color              InpLevelsZoneColorRes     = C'255,228,225';     // Màu nền vùng kháng cự (chart nền tối: chọn màu tối)
+input color              InpLevelsZoneColorSup     = C'225,245,225';     // Màu nền vùng hỗ trợ
+
 input group "=== 9. Bias & ngưỡng theo tầng ==="
 input int                InpWeightMN1              = 1;                  // Trọng số MN1
 input int                InpWeightW1               = 2;                  // Trọng số W1
@@ -144,6 +160,7 @@ input bool               InpNewsIncludeSymbolCcy   = false;              // Thê
 #include "Include\AiExport.mqh"
 #include "Include\Journal.mqh"
 #include "Include\SelfTest.mqh"
+#include "Include\Levels.mqh"
 
 //+------------------------------------------------------------------+
 //| Biến toàn cục                                                    |
@@ -210,6 +227,9 @@ bool ValidateInputs()
    if(InpSetupExpiryHours<1 || InpTriggeredMaxHours<1 || InpCooldownMinutes<0 || InpTopK<1 || InpMaxNewPerDay<0 ||
       InpMaxCurrencySameSide<1 || InpMaxTotalRiskPct<=0.0 || InpNewsLookaheadMin<1)
      { LogE("Tham số thời hạn/xếp hạng/rủi ro không hợp lệ."); ok=false; }
+   if(InpLevelsPerSide<1 || InpLevelsPerSide>10 || InpLevelsMinScore<1 || InpLevelsStrongScore<InpLevelsMinScore ||
+      InpLevelsClusterAtrH4<=0.0 || InpLevelsRangeAtrD1<=0.0)
+     { LogE("Tham số vùng hỗ trợ/kháng cự không hợp lệ (số vùng 1..10, điểm >= 1, điểm mạnh >= điểm tối thiểu, ATR > 0)."); ok=false; }
    if(InpTgEnabled && !InpDryRun && (InpTgToken=="" || InpTgChatId==""))
       LogW("Telegram đang bật nhưng thiếu token/chat id - tin sẽ chỉ in ra log.");
    return ok;
@@ -769,6 +789,7 @@ void ScanCycle()
    SigRollDay();
    SigMonitor(now);
    JnlUpdate(now);
+   LvUpdate(g_barsToLoad);
 
    datetime hk=HourKey(now);
    if(hk!=g_curHourKey)
@@ -820,6 +841,7 @@ void OnDeinit(const int reason)
    JnlSave();
    TgDeinit();
    SelfTestDeinit();
+   LvDeinit();
    IndReleaseAllHandles();
    if(InpReleaseSymbolsAfterScan)
       UniReleaseAllOwned();

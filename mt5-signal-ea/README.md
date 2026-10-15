@@ -1,9 +1,9 @@
-# SignalEA: EA báo tín hiệu qua Telegram cho MetaTrader 5
+﻿# SignalEA: EA báo tín hiệu qua Telegram cho MetaTrader 5
 
 > **EA chỉ báo tín hiệu. Tuyệt đối không đặt, sửa hay đóng lệnh.** Mã nguồn không gọi `OrderSend`, `CTrade` hay bất kỳ hàm giao dịch nào, và không dùng DLL.
 > Tín hiệu chỉ để tham khảo, không phải lời khuyên đầu tư.
 
-Phiên bản hiện tại: **0.9.2**, ứng viên phát hành. Đã đủ các giai đoạn 1–5, cộng thêm cầu nối Python gọi Claude API (giai đoạn 6, thư mục `ai-bridge/`) nhật ký kết quả tín hiệu (giai đoạn 7, mục 10) và bộ backtest Python (giai đoạn 8, mục 11). **Mã chưa được biên dịch bằng MetaEditor**: sẽ lên 1.0.0 sau khi biên dịch sạch và đạt các mục nghiệm thu ở mục 9.
+Phiên bản hiện tại: **0.9.3**, ứng viên phát hành. Đã đủ các giai đoạn 1–5, cộng thêm cầu nối Python gọi Claude API (giai đoạn 6, thư mục `ai-bridge/`), nhật ký kết quả tín hiệu (giai đoạn 7, mục 10), bộ backtest Python (giai đoạn 8, mục 11) và vẽ vùng hỗ trợ/kháng cự lên chart (giai đoạn 9, mục 12). **Mã chưa được biên dịch bằng MetaEditor**: sẽ lên 1.0.0 sau khi biên dịch sạch và đạt các mục nghiệm thu ở mục 9.
 
 ---
 
@@ -20,7 +20,8 @@ Phiên bản hiện tại: **0.9.2**, ứng viên phát hành. Đã đủ các g
 | 5 | Rà soát toàn bộ mã nguồn, hoàn thiện README/TESTING, bảng đối chiếu nghiệm thu (mục 9) | Đã giao |
 | 6 | Cầu nối Python gọi Claude API: EA xuất JSON → script gọi Claude → gửi nhận định lên Telegram, in token, giới hạn lần gọi/ngày | Đã giao |
 | 7 | Nhật ký kết quả tín hiệu: mô phỏng từng setup trên nến M1, ghi CSV, thống kê trong tóm tắt ngày, script phân tích | Đã giao |
-| 8 | Backtest Python: script MT5 xuất lịch sử + engine chạy lại logic EA theo từng giờ, xuất CSV cùng định dạng nhật ký | **Đã giao** |
+| 8 | Backtest Python: script MT5 xuất lịch sử + engine chạy lại logic EA theo từng giờ, xuất CSV cùng định dạng nhật ký | Đã giao |
+| 9 | Vẽ vùng hỗ trợ/kháng cự (swing W1/D1/H4 gom vùng, chấm điểm) lên mọi chart đang mở | **Đã giao** |
 
 ### Module
 
@@ -35,6 +36,7 @@ mt5-signal-ea/
   Include/SelfTest.mqh     Đối chiếu chỉ báo tự tính với iMA/iBands/iRSI/iATR + bảng tick value (thêm)
   Include/AiExport.mqh     Xuất JSON sự kiện cho cầu nối AI (thêm)
   Include/Journal.mqh      Nhật ký kết quả tín hiệu: mô phỏng trên M1, CSV, thống kê (thêm)
+  Include/Levels.mqh       Tìm và vẽ vùng hỗ trợ/kháng cự lên chart (thêm)
   tools/analyze_journal.py Phân tích file nhật ký CSV + test (thêm)
   Scripts/ExportHistory.mq5 Script MT5 xuất lịch sử nến + spec cho backtest (thêm)
   backtest/                Bộ backtest Python + test + README riêng (thêm)
@@ -209,6 +211,11 @@ Nếu chưa làm bước này, WebRequest sẽ báo lỗi (4014/4060) và EA in 
 | | `InpCorrelationGroups` | KIM_LOAI:XAU,XAG,XPT,XPD; CRYPTO:BTC,ETH,...; CHI_SO_MY:US30,US500,USTEC,US100; DAU:UKOIL,USOIL,XBR,XTI | Nhóm tương quan |
 | | `InpMaxCurrencySameSide` | 2 | Phơi nhiễm Forex |
 | Tin tức | `InpNewsEnabled`, `InpNewsLookaheadMin`, `InpNewsCurrencies`, `InpNewsIncludeSymbolCcy` | true, 120, USD, false | |
+| Hỗ trợ/kháng cự | `InpLevelsEnabled`, `InpLevelsAllCharts` | true, true | Bật vẽ; vẽ trên mọi chart đang mở hay chỉ chart gắn EA |
+| | `InpLevelsPerSide` | 4 | Số vùng tối đa phía trên và phía dưới giá |
+| | `InpLevelsUseW1`, `InpLevelsMinScore`, `InpLevelsStrongScore` | true, 3, 6 | Dùng swing W1; điểm tối thiểu; điểm của vùng mạnh |
+| | `InpLevelsClusterAtrH4`, `InpLevelsRangeAtrD1` | 0.5, 6.0 | Khoảng gom swing; khoảng cách tối đa tới giá |
+| | `InpLevelsDrawZones`, `InpLevelsShowLabels`, các màu | true, true | Tô nền vùng, nhãn giá, màu đường/nền |
 
 ---
 
@@ -422,3 +429,29 @@ Hướng dẫn đầy đủ nằm ở **`backtest/README.md`**. Tóm tắt:
 3. **Xem kết quả:** CSV có cùng định dạng `journal_<login>.csv`, và báo cáo được in ra bằng `tools/analyze_journal.py`.
 
 Chỉ dùng thư viện chuẩn Python, không cần cài thêm. Đọc mục 3–4 của `backtest/README.md` để biết các khác biệt so với EA chạy thật và cách tránh tối ưu quá khớp với dữ liệu quá khứ.
+
+## 12. Vùng hỗ trợ/kháng cự trên chart (giai đoạn 9)
+
+EA tự vẽ các vùng hỗ trợ (HT, xanh) và kháng cự (KC, đỏ) lên **mọi chart đang mở** trong terminal (hoặc chỉ chart gắn EA nếu `InpLevelsAllCharts=false`). Mở chart BTCUSD hay XAUUSD ở bất kỳ khung nào là thấy vùng, không cần gắn EA lên từng chart. Phần này chỉ vẽ đối tượng đồ họa, không giao dịch và không ảnh hưởng tới logic tín hiệu.
+
+**Cách tìm vùng:**
+1. Lấy các đỉnh/đáy swing đã xác nhận (fractal) trên W1 (khoảng 3 năm, 2 nến mỗi bên), D1 (khoảng 1 năm, `InpSwingStrengthD1`) và H4 (khoảng 2 tháng, `InpSwingStrengthH4`). Chỉ dùng nến đã đóng.
+2. Gom các swing có giá cách nhau ≤ `InpLevelsClusterAtrH4` × ATR(H4) thành một vùng. Đỉnh cũ và đáy cũ được gom chung, vì kháng cự bị phá thường thành hỗ trợ và ngược lại.
+3. **Điểm vùng** = tổng trọng số các lần chạm: W1 = 3, D1 = 2, H4 = 1. Bỏ vùng có điểm < `InpLevelsMinScore` (mặc định 3: ví dụ 1 lần chạm D1 + 1 lần H4, hoặc 1 lần chạm W1) và vùng cách giá > `InpLevelsRangeAtrD1` × ATR(D1).
+4. Vùng có tâm trên giá hiện tại là **kháng cự**, dưới giá là **hỗ trợ**. Mỗi phía vẽ `InpLevelsPerSide` vùng gần giá nhất.
+
+**Cách đọc trên chart:**
+- Nét đậm (3) là vùng **mạnh** (điểm ≥ `InpLevelsStrongScore`), nét vừa (2) là vùng trung bình, nét đứt là vùng yếu.
+- Nhãn bên phải nến cuối có dạng `KC 82700 · D1x1 H4x3 · TB`: giá tâm vùng, số lần chạm theo khung, độ mạnh.
+- Rê chuột lên đường hoặc vùng để xem tooltip: biên dưới/biên trên của vùng, điểm, lần chạm gần nhất, và "GIÁ ĐANG TEST" khi giá đang nằm trong vùng.
+- Phần tô nền bắt đầu từ lần chạm cũ nhất.
+
+**Cập nhật:**
+- Vùng được tính lại mỗi khi có nến H1 mới đóng, tối đa 2 symbol mỗi chu kỳ 30 giây, nên không nặng cho VPS.
+- Chart được vẽ lại khi vùng thay đổi, khi giá vượt sang phía khác của vùng, khi có nến mới, hoặc khi bạn đổi khung.
+- Log có dòng `[LEVELS] BTCUSD KC: ... | HT: ...` mỗi lần tính lại.
+- Gỡ EA thì mọi đối tượng (tiền tố `SEA_LV_`) được xóa.
+
+**Lưu ý:**
+- Chart nền tối nên đổi `InpLevelsZoneColorRes/Sup` sang màu tối, hoặc tắt `InpLevelsDrawZones` để chỉ còn đường kẻ.
+- Đây là vùng tính máy móc từ swing. Các vùng tâm lý (số tròn như 80.000, 4.000) và đường xu hướng chéo không được vẽ. Dùng vùng này làm điểm tham chiếu và tự xác nhận bằng hành động giá.
